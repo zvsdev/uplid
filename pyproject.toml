@@ -1,0 +1,69 @@
+[tool.poetry]
+name = "pydantic-prefixed-id"
+version = "0.0.1"
+description = "Prefixed Unique Ids, runtime/statically typed via pydanitc, designed for humans"
+authors = ["Zachary V Smith <zvs@daswolf.dev>"]
+readme = "README.md"
+homepage = "https://github.com/z-v-s/pydantic-prefixed-id"
+documentation = "https://github.com/z-v-s/pydantic-prefixed-id"
+repository = "https://github.com/z-v-s/pydantic-prefixed-id"
+license = "MIT"
+packages = [{include = "prefixed_id.py", from="."}]
+classifiers = [
+    "Framework :: Pydantic",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Typing :: Typed",
+]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pydantic = ">=2.6.2,<3.0.0"
+python-ulid = "2.2.0"
+pybase62 = "1.0.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "8.0.1"
+mypy = "1.8.0"
+ruff = "0.2.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry-version-plugin]
+source = "init"
+
+
+[tool.mypy]
+strict = true
+
+[tool.ruff]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "C",  # flake8-comprehensions
+    "B",  # flake8-bugbear
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by ruff
+]
+line-length = 100
+indent-width = 4
+
+[tool.ruff.isort]
+known-third-party = ["pydantic", "base62", "ulid"]
+
+[tool.ruff.pyupgrade]
+# Preserve types, even if a file imports `from __future__ import annotations`.
+keep-runtime-typing = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

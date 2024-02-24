@@ -1,0 +1,16 @@
+{
+  "[python]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": true
+    }
+  },
+  "python.analysis.completeFunctionParens": true,
+  "python.analysis.autoImportUserSymbols": true,
+  "python.analysis.autoImportCompletions": true,
+  "python.analysis.inlayHints.functionReturnTypes": true,
+  "python.analysis.typeCheckingMode": "strict",
+  "ruff.showNotification": "always",
+  "ruff.lint.args": ["--config=./pyproject.toml"],
+}
