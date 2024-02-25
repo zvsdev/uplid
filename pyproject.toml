@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "LPID"
-version = "0.0.1"
+version = "0"
 description = "Literal Prefixed Unique Ids, runtime/statically typed via pydanitc, designed for humans"
 authors = ["Zachary V Smith <zvs@daswolf.dev>"]
 readme = "README.md"
@@ -8,7 +8,6 @@ homepage = "https://github.com/z-v-s/pydantic-prefixed-id"
 documentation = "https://github.com/z-v-s/pydantic-prefixed-id"
 repository = "https://github.com/z-v-s/pydantic-prefixed-id"
 license = "MIT"
-packages = [{include = "lpid.py", from="."}]
 classifiers = [
     "Framework :: Pydantic",
     "Intended Audience :: Developers",
@@ -43,7 +42,7 @@ source = "init"
 strict = true
 
 [tool.ruff]
-select = [
+lint.select = [
     "E",  # pycodestyle errors
     "W",  # pycodestyle warnings
     "F",  # pyflakes
@@ -52,16 +51,16 @@ select = [
     "B",  # flake8-bugbear
     "UP", # pyupgrade
 ]
-ignore = [
+lint.ignore = [
     "E501",  # line too long, handled by ruff
 ]
 line-length = 100
 indent-width = 4
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 known-third-party = ["pydantic", "ksuid"]
 
-[tool.ruff.pyupgrade]
+[tool.ruff.lint.pyupgrade]
 # Preserve types, even if a file imports `from __future__ import annotations`.
 keep-runtime-typing = true
 

@@ -23,7 +23,7 @@ class Workspace(BaseModel):
     id: WorkspaceId = Field(default_factory=factory(WorkspaceId))
 
 
-def test_it_can_generate_a_valid_id():
+def test_it_can_generate_a_valid_id() -> None:
     user_id = UserIdFactory()
 
     assert isinstance(user_id, LPID)
@@ -112,6 +112,7 @@ def test_it_fails_to_serialize_to_and_from_json_with_the_wrong_prefix() -> None:
 
 
 def test_it_orders_by_creation_time_given_enough_time() -> None:
+    # KSUIDS normally have second-level precision, but this particular implementation has ms precision
     first = UserIdFactory()
     time.sleep(0.01)
     second = UserIdFactory()

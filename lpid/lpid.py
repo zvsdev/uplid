@@ -1,19 +1,10 @@
-from datetime import datetime
-from typing import (
-    Any,
-    Callable,
-    Generic,
-    Self,
-    Type,
-    TypeVar,
-    get_args,
-    get_origin,
-)
+from datetime import datetime as Datetime
+from typing import Any, Callable, Generic, Type, TypeVar, Union, get_args, get_origin
 
 from ksuid import KsuidMs
 from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
-from typing_extensions import LiteralString
+from typing_extensions import LiteralString, Self
 
 PREFIX = TypeVar("PREFIX", bound=LiteralString)
 
@@ -46,7 +37,7 @@ class LPID(Generic[PREFIX]):
     prefix: PREFIX
     uid: KsuidMs
 
-    def __init__(self, prefix: PREFIX, uid: str | KsuidMs) -> None:
+    def __init__(self, prefix: PREFIX, uid: Union[str, KsuidMs]) -> None:
         self.prefix = prefix
         if isinstance(uid, str):
             self.uid = KsuidMs.from_base62(uid)
@@ -93,7 +84,7 @@ class LPID(Generic[PREFIX]):
         raise TypeError(f"Cannot compare {self.__class__} with {other.__class__}")
 
     @property
-    def datetime(self) -> datetime:
+    def datetime(self) -> Datetime:
         return self.uid.datetime
 
     @property
@@ -124,12 +115,12 @@ class LPID(Generic[PREFIX]):
         return cls(prefix, uid)
 
     @classmethod
-    def generate(cls, prefix: PREFIX, at: "datetime | None" = None) -> Self:
+    def generate(cls, prefix: PREFIX, at: Union[Datetime, None] = None) -> Self:
         return cls(prefix, KsuidMs(at))
 
     @classmethod
     def factory(cls, prefix: PREFIX) -> Callable[[], "LPID[PREFIX]"]:
-        def f() -> Self:
+        def f() -> LPID[PREFIX]:
             return cls.generate(prefix)
 
         return f
@@ -138,7 +129,7 @@ class LPID(Generic[PREFIX]):
     def __get_pydantic_core_schema__(
         cls, source_type: Any, handler: GetCoreSchemaHandler
     ) -> CoreSchema:
-        origin: Type[cls] | None = get_origin(source_type)
+        origin = get_origin(source_type)
         if origin is None:  # used as `x: PrefixId` without params
             raise RuntimeError("PrefixId must be used with a prefix literal string")
         prefix_str_type = get_args(source_type)[0]
@@ -159,7 +150,7 @@ class LPID(Generic[PREFIX]):
                 raise AssertionError(e) from e
             return prefixed_id
 
-        def val_prefix(v: LPID[PREFIX] | str) -> LPID[PREFIX]:
+        def val_prefix(v: Union[LPID[PREFIX], str]) -> LPID[PREFIX]:
             if isinstance(v, str):
                 v = val_str(v)
             if v.prefix == prefix_str:
@@ -185,7 +176,7 @@ class LPID(Generic[PREFIX]):
 
 def factory(lpid_type: Type[LPID[PREFIX]]) -> Callable[[], LPID[PREFIX]]:
     literal_type = lpid_type.__args__[0]  # type: ignore
-    prefix: str = literal_type.__args__[0]  # type: ignore
+    prefix: str = literal_type.__args__[0]
 
     def f() -> LPID[PREFIX]:
         return LPID.generate(prefix)  # type: ignore
