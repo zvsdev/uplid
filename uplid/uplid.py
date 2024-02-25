@@ -9,7 +9,7 @@ from typing_extensions import LiteralString, Self
 PREFIX = TypeVar("PREFIX", bound=LiteralString)
 
 
-class LPID(Generic[PREFIX]):
+class UPLID(Generic[PREFIX]):
     """
     A class representing an ID with a prefixed lteral string identifier. The UID portion is managed using the KSUID
     format encoded via base62.
@@ -119,8 +119,8 @@ class LPID(Generic[PREFIX]):
         return cls(prefix, KsuidMs(at))
 
     @classmethod
-    def factory(cls, prefix: PREFIX) -> Callable[[], "LPID[PREFIX]"]:
-        def f() -> LPID[PREFIX]:
+    def factory(cls, prefix: PREFIX) -> Callable[[], "UPLID[PREFIX]"]:
+        def f() -> UPLID[PREFIX]:
             return cls.generate(prefix)
 
         return f
@@ -143,14 +143,14 @@ class LPID(Generic[PREFIX]):
         if not prefix_str:
             raise RuntimeError(f"Expected prefix to be a literal string, got {prefix_str_type}")
 
-        def val_str(v: str) -> LPID[PREFIX]:
+        def val_str(v: str) -> UPLID[PREFIX]:
             try:
                 prefixed_id = cls.from_string(v, prefix_str)
             except ValueError as e:
                 raise AssertionError(e) from e
             return prefixed_id
 
-        def val_prefix(v: Union[LPID[PREFIX], str]) -> LPID[PREFIX]:
+        def val_prefix(v: Union[UPLID[PREFIX], str]) -> UPLID[PREFIX]:
             if isinstance(v, str):
                 v = val_str(v)
             if v.prefix == prefix_str:
@@ -174,11 +174,11 @@ class LPID(Generic[PREFIX]):
         )
 
 
-def factory(lpid_type: Type[LPID[PREFIX]]) -> Callable[[], LPID[PREFIX]]:
+def factory(lpid_type: Type[UPLID[PREFIX]]) -> Callable[[], UPLID[PREFIX]]:
     literal_type = lpid_type.__args__[0]  # type: ignore
     prefix: str = literal_type.__args__[0]
 
-    def f() -> LPID[PREFIX]:
-        return LPID.generate(prefix)  # type: ignore
+    def f() -> UPLID[PREFIX]:
+        return UPLID.generate(prefix)  # type: ignore
 
     return f

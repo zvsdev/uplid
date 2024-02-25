@@ -1,4 +1,4 @@
-# LPID - Literal Prefixed Unique Ids
+# UPLID - Universal Prefixed Literal Unique Id
 
 A pydantic compatible, human friendly prefixed id.
 
@@ -8,24 +8,24 @@ UIDs underneath are KSUIDs allowing them to be sorted by time of creation while 
 
 String representations are encoded with base62 keeping them url safe and human friendly.
 
-Python 3.9 or higher is required.
+Python 3.9 or higher and at least pydantic 2.6 are required.
 
 ## Usage
 
 ### With Pydantic
 
 ```py
-from lpid import LPID, factory
+from uplid import UPLID, factory
 from pydantic import BaseModel, Field
 
-UserId = LPID[Literal["usr]]
-WorkspaceId = LPID[Literal["wrkspace"]]
+UserId = UPLID[Literal["usr]]
+WorkspaceId = UPLID[Literal["wrkspace"]]
 
 class User(BaseModel):
   id: UserId = Field(default_factory=factory(UserId))
   workspace_id: WorkspaceId
 
-user = User(workspace_id = LPID.generate("wrkspace))
+user = User(workspace_id = UPLID.generate("wrkspace))
 
 user_json = user.model_dump_json()
 
@@ -35,12 +35,12 @@ restored_user = User.validate_json(user_json)
 ### Standalone
 
 ```py
-from lpid import LPID
+from uplid import UPLID
 
-UserId = LPID[Literal["usr]]
+UserId = UPLID[Literal["usr]]
 
-user_id = LPID.generate("usr")
-workspace_id = LPID.generate("wrkspace")
+user_id = UPLID.generate("usr")
+workspace_id = UPLID.generate("wrkspace")
 
 def foo(bar: UserId) -> None:
   pass

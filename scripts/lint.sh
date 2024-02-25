@@ -3,6 +3,6 @@
 set -e
 set -x
 
-mypy lpid tests.py
-ruff lpid tests.py
-ruff format lpid tests.py --check
+mypy uplid tests.py
+ruff uplid tests.py
+ruff format uplid tests.py --check

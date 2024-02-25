@@ -5,10 +5,10 @@ import pytest
 from ksuid import KsuidMs
 from pydantic import BaseModel, Field
 
-from lpid import LPID, factory
+from uplid import UPLID, factory
 
-UserId = LPID[Literal["usr"]]
-WorkspaceId = LPID[Literal["wrkspace"]]
+UserId = UPLID[Literal["usr"]]
+WorkspaceId = UPLID[Literal["wrkspace"]]
 
 UserIdFactory = factory(UserId)
 WorkspaceIdFactory = factory(WorkspaceId)
@@ -26,32 +26,32 @@ class Workspace(BaseModel):
 def test_it_can_generate_a_valid_id() -> None:
     user_id = UserIdFactory()
 
-    assert isinstance(user_id, LPID)
+    assert isinstance(user_id, UPLID)
     assert user_id.prefix == "usr"
     assert isinstance(user_id.uid, KsuidMs)
 
 
 def test_it_can_load_from_a_string() -> None:
-    user_id = LPID.from_string(str(test_id), "usr")
+    user_id = UPLID.from_string(str(test_id), "usr")
 
-    assert isinstance(user_id, LPID)
+    assert isinstance(user_id, UPLID)
     assert user_id.prefix == "usr"
     assert isinstance(user_id.uid, KsuidMs)
 
 
 def test_it_raises_on_an_invalid_string() -> None:
     with pytest.raises(ValueError):
-        LPID.from_string("not_a_valid_id", "usr")
+        UPLID.from_string("not_a_valid_id", "usr")
 
 
 def test_it_raises_on_valid_prefix_but_missing_uid() -> None:
     with pytest.raises(ValueError):
-        LPID.from_string("usr_", "usr")
+        UPLID.from_string("usr_", "usr")
 
 
 def test_it_raises_on_a_valid_prefix_but_invalid_uid() -> None:
     with pytest.raises(ValueError):
-        LPID.from_string("usr_00000000000000000000000000", "usr")
+        UPLID.from_string("usr_00000000000000000000000000", "usr")
 
 
 def test_it_can_instantiate_and_use_a_pydantic_model() -> None:
@@ -65,13 +65,13 @@ def test_it_can_instantiate_and_use_a_pydantic_model() -> None:
 def test_it_can_instantiate_using_a_factory() -> None:
     user = User()
 
-    assert isinstance(user.id, LPID)
+    assert isinstance(user.id, UPLID)
     assert user.id.prefix == "usr"
 
 
 def test_it_raises_a_value_error_when_the_prefix_is_wrong() -> None:
     with pytest.raises(ValueError):
-        LPID.from_string(str(test_id), "not_usr")
+        UPLID.from_string(str(test_id), "not_usr")
 
 
 def test_it_serializes_to_and_from_a_dict() -> None:

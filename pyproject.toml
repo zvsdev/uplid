@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "LPID"
-version = "0"
-description = "Literal Prefixed Unique Ids, runtime/statically typed via pydanitc, designed for humans"
+name = "uplid"
+version = "0.0.2"
+description = "Universal Prefixed Literal Ids, runtime/statically typed via pydanitc, designed for humans"
 authors = ["Zachary V Smith <zvs@daswolf.dev>"]
 readme = "README.md"
 homepage = "https://github.com/z-v-s/pydantic-prefixed-id"
@@ -22,7 +22,7 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = "^3.9"
-pydantic = ">=2.6.2,<3.0.0"
+pydantic = ">=2.6.0,<3.0.0"
 svix-ksuid = "0.6.2"
 
 [tool.poetry.group.dev.dependencies]
