@@ -1,12 +1,24 @@
 from datetime import datetime
-from typing import Any, Callable, LiteralString, Self, Type, get_args, get_origin
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    Self,
+    Type,
+    TypeVar,
+    get_args,
+    get_origin,
+)
 
 from ksuid import KsuidMs
 from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
+from typing_extensions import LiteralString
+
+PREFIX = TypeVar("PREFIX", bound=LiteralString)
 
 
-class LPID[PREFIX: LiteralString]:
+class LPID(Generic[PREFIX]):
     """
     A class representing an ID with a prefixed lteral string identifier. The UID portion is managed using the KSUID
     format encoded via base62.
@@ -106,17 +118,17 @@ class LPID[PREFIX: LiteralString]:
             raise ValueError("Expected encoded_uid to be a non-empty string")
         if len(encoded_uid) != 27:
             raise ValueError(
-                f"Expected encoded_uid to be 26 characters long, got {len(encoded_uid)}"
+                f"Expected encoded_uid to be 27 characters long, got {len(encoded_uid)}"
             )
-        _uid = KsuidMs.from_base62(encoded_uid)
-        return cls(prefix, _uid)
+        uid = KsuidMs.from_base62(encoded_uid)
+        return cls(prefix, uid)
 
     @classmethod
     def generate(cls, prefix: PREFIX, at: "datetime | None" = None) -> Self:
         return cls(prefix, KsuidMs(at))
 
     @classmethod
-    def factory(cls, prefix: PREFIX) -> Callable[[], Self]:
+    def factory(cls, prefix: PREFIX) -> Callable[[], "LPID[PREFIX]"]:
         def f() -> Self:
             return cls.generate(prefix)
 
@@ -169,3 +181,13 @@ class LPID[PREFIX: LiteralString]:
             python_schema=python_schema,
             serialization=core_schema.plain_serializer_function_ser_schema(lambda x: str(x)),
         )
+
+
+def factory(lpid_type: Type[LPID[PREFIX]]) -> Callable[[], LPID[PREFIX]]:
+    literal_type = lpid_type.__args__[0]  # type: ignore
+    prefix: str = literal_type.__args__[0]  # type: ignore
+
+    def f() -> LPID[PREFIX]:
+        return LPID.generate(prefix)  # type: ignore
+
+    return f

@@ -1,34 +1,37 @@
+import time
 from typing import Literal
 
 import pytest
 from ksuid import KsuidMs
 from pydantic import BaseModel, Field
 
-from lpid import LPID
+from lpid import LPID, factory
 
 UserId = LPID[Literal["usr"]]
 WorkspaceId = LPID[Literal["wrkspace"]]
 
-test_id = LPID.generate("usr")
+UserIdFactory = factory(UserId)
+WorkspaceIdFactory = factory(WorkspaceId)
+test_id = UserIdFactory()
 
 
 class User(BaseModel):
-    id: UserId = Field(default_factory=UserId.factory("usr"))
+    id: UserId = Field(default_factory=factory(UserId))
 
 
 class Workspace(BaseModel):
-    id: WorkspaceId = Field(default_factory=WorkspaceId.factory("wrkspace"))
+    id: WorkspaceId = Field(default_factory=factory(WorkspaceId))
 
 
 def test_it_can_generate_a_valid_id():
-    user_id = LPID.generate("usr")
+    user_id = UserIdFactory()
 
     assert isinstance(user_id, LPID)
     assert user_id.prefix == "usr"
     assert isinstance(user_id.uid, KsuidMs)
 
 
-def test_it_can_load_from_a_string():
+def test_it_can_load_from_a_string() -> None:
     user_id = LPID.from_string(str(test_id), "usr")
 
     assert isinstance(user_id, LPID)
@@ -51,15 +54,15 @@ def test_it_raises_on_a_valid_prefix_but_invalid_uid() -> None:
         LPID.from_string("usr_00000000000000000000000000", "usr")
 
 
-def test_it_can_instantiate_and_use_a_pydantic_model():
-    user_id = LPID.generate("usr")
+def test_it_can_instantiate_and_use_a_pydantic_model() -> None:
+    user_id = UserIdFactory()
 
     user = User(id=user_id)
 
     assert user.id == user_id
 
 
-def test_it_can_instantiate_using_a_factory():
+def test_it_can_instantiate_using_a_factory() -> None:
     user = User()
 
     assert isinstance(user.id, LPID)
@@ -106,3 +109,13 @@ def test_it_fails_to_serialize_to_and_from_json_with_the_wrong_prefix() -> None:
 
     with pytest.raises(ValueError):
         Workspace.model_validate_json(user_json)
+
+
+def test_it_orders_by_creation_time_given_enough_time() -> None:
+    first = UserIdFactory()
+    time.sleep(0.01)
+    second = UserIdFactory()
+    time.sleep(0.01)
+    third = UserIdFactory()
+
+    assert sorted([third, first, second]) == [first, second, third]
