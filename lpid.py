@@ -1,25 +1,25 @@
+from datetime import datetime
 from typing import Any, Callable, LiteralString, Self, Type, get_args, get_origin
 
-from base62 import decode, encode
+from ksuid import KsuidMs
 from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
-from ulid import ULID
 
 
-class PrefixedId[PREFIX: LiteralString]:
+class LPID[PREFIX: LiteralString]:
     """
-    A class representing an ID with a prefixed str identifier. The UID portion is managed using ULID (Universall
-    Unique Lexicographically Sortable Identifier) format encoded via base62.
+    A class representing an ID with a prefixed lteral string identifier. The UID portion is managed using the KSUID
+    format encoded via base62.
 
     Attributes:
         prefix (PREFIX): A string literal prefix for the ID. Can be specified as a type param or infered from args
-        uid (ULID): The ULID object representing the unique identifier.
-        encoded_uid (str): The encoded string representation of the ULID.
+        uid (KsuidMs): The KsuidMs object representing the unique identifier.
 
     Methods:
         from_string(string: str, prefix: PREFIX): Class method to create an instance of PrefixedId from a
-            string representation.
-        generate(prefix: PREFIX): Class method to generate a new PrefixedId with a given prefix.
+            base62 string representation.
+        generate(prefix: PREFIX): Class method to generate a new PrefixedId with a given prefix, optionally can be generated
+        for a specific datetime.
         factory(prefix: PREFIX): Class method to return a callable that generates new PrefixedIds with the given prefix.
 
     Raises:
@@ -32,28 +32,61 @@ class PrefixedId[PREFIX: LiteralString]:
     """
 
     prefix: PREFIX
-    uid: ULID
-    encoded_uid: str
+    uid: KsuidMs
 
-    def __init__(self, prefix: PREFIX, uid: ULID | str) -> None:
+    def __init__(self, prefix: PREFIX, uid: str | KsuidMs) -> None:
         self.prefix = prefix
-        if isinstance(uid, ULID):
-            self.uid = uid
-            self.encoded_uid = encode(int(uid))
+        if isinstance(uid, str):
+            self.uid = KsuidMs.from_base62(uid)
         else:
-            self.uid = ULID.from_int(decode(uid))
-            self.encoded_uid = uid
+            self.uid = uid
 
     def __repr__(self) -> str:
         return str(self)
 
     def __str__(self) -> str:
-        return f"{self.prefix}_{self.encoded_uid}"
+        return f"{self.prefix}_{self.uid}"
 
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, self.__class__):
             return self.prefix == other.prefix and self.uid == other.uid
         return False
+
+    def __gt__(self, other: Self) -> bool:
+        if isinstance(other, self.__class__):
+            if self.prefix == other.prefix:
+                return self.uid > other.uid
+            return self.prefix > other.prefix
+        raise TypeError(f"Cannot compare {self.__class__} with {other.__class__}")
+
+    def __lt__(self, other: Self) -> bool:
+        if isinstance(other, self.__class__):
+            if self.prefix == other.prefix:
+                return self.uid < other.uid
+            return self.prefix < other.prefix
+        raise TypeError(f"Cannot compare {self.__class__} with {other.__class__}")
+
+    def __gte__(self, other: Self) -> bool:
+        if isinstance(other, self.__class__):
+            if self == other:
+                return True
+            return self > other
+        raise TypeError(f"Cannot compare {self.__class__} with {other.__class__}")
+
+    def __lte__(self, other: Self) -> bool:
+        if isinstance(other, self.__class__):
+            if self == other:
+                return True
+            return self < other
+        raise TypeError(f"Cannot compare {self.__class__} with {other.__class__}")
+
+    @property
+    def datetime(self) -> datetime:
+        return self.uid.datetime
+
+    @property
+    def timestamp(self) -> float:
+        return self.uid.timestamp
 
     @classmethod
     def from_string(cls, string: str, prefix: PREFIX) -> Self:
@@ -71,16 +104,16 @@ class PrefixedId[PREFIX: LiteralString]:
             raise ValueError(f"Expected prefix to be {prefix}, got {_prefix}")
         if not encoded_uid:
             raise ValueError("Expected encoded_uid to be a non-empty string")
-        if len(encoded_uid) != 21:
+        if len(encoded_uid) != 27:
             raise ValueError(
                 f"Expected encoded_uid to be 26 characters long, got {len(encoded_uid)}"
             )
-        _uid = ULID.from_int(decode(encoded_uid))
+        _uid = KsuidMs.from_base62(encoded_uid)
         return cls(prefix, _uid)
 
     @classmethod
-    def generate(cls, prefix: PREFIX) -> Self:
-        return cls(prefix, ULID())
+    def generate(cls, prefix: PREFIX, at: "datetime | None" = None) -> Self:
+        return cls(prefix, KsuidMs(at))
 
     @classmethod
     def factory(cls, prefix: PREFIX) -> Callable[[], Self]:
@@ -107,14 +140,14 @@ class PrefixedId[PREFIX: LiteralString]:
         if not prefix_str:
             raise RuntimeError(f"Expected prefix to be a literal string, got {prefix_str_type}")
 
-        def val_str(v: str) -> PrefixedId[PREFIX]:
+        def val_str(v: str) -> LPID[PREFIX]:
             try:
                 prefixed_id = cls.from_string(v, prefix_str)
             except ValueError as e:
                 raise AssertionError(e) from e
             return prefixed_id
 
-        def val_prefix(v: PrefixedId[PREFIX] | str) -> PrefixedId[PREFIX]:
+        def val_prefix(v: LPID[PREFIX] | str) -> LPID[PREFIX]:
             if isinstance(v, str):
                 v = val_str(v)
             if v.prefix == prefix_str:
