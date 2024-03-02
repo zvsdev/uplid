@@ -1,12 +1,12 @@
 [tool.poetry]
 name = "uplid"
-version = "0.0.2"
+version = "0.0.4"
 description = "Universal Prefixed Literal Ids, runtime/statically typed via pydanitc, designed for humans"
-authors = ["Zachary V Smith <zvs@daswolf.dev>"]
+authors = ["ZVS <zvs@daswolf.dev>"]
 readme = "README.md"
-homepage = "https://github.com/z-v-s/pydantic-prefixed-id"
-documentation = "https://github.com/z-v-s/pydantic-prefixed-id"
-repository = "https://github.com/z-v-s/pydantic-prefixed-id"
+homepage = "https://github.com/zvsdev/uplid"
+documentation = "https://github.com/zvsdev/uplid"
+repository = "https://github.com/zvsdev/uplid"
 license = "MIT"
 classifiers = [
     "Framework :: Pydantic",

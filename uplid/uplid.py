@@ -2,8 +2,8 @@ from datetime import datetime as Datetime
 from typing import Any, Callable, Generic, Type, TypeVar, Union, get_args, get_origin
 
 from ksuid import KsuidMs
-from pydantic import GetCoreSchemaHandler
-from pydantic_core import CoreSchema, core_schema
+from pydantic import GetCoreSchemaHandler, ValidationError
+from pydantic_core import CoreSchema, PydanticCustomError, core_schema
 from typing_extensions import LiteralString, Self
 
 PREFIX = TypeVar("PREFIX", bound=LiteralString)
@@ -23,7 +23,6 @@ class UPLID(Generic[PREFIX]):
             base62 string representation.
         generate(prefix: PREFIX): Class method to generate a new PrefixedId with a given prefix, optionally can be generated
         for a specific datetime.
-        factory(prefix: PREFIX): Class method to return a callable that generates new PrefixedIds with the given prefix.
 
     Raises:
         ValueError: If the string representation does not conform to the expected format, if prefix
@@ -40,7 +39,7 @@ class UPLID(Generic[PREFIX]):
     def __init__(self, prefix: PREFIX, uid: Union[str, KsuidMs]) -> None:
         self.prefix = prefix
         if isinstance(uid, str):
-            self.uid = KsuidMs.from_base62(uid)
+            self.uid = self._validate_uid(uid)
         else:
             self.uid = uid
 
@@ -83,6 +82,15 @@ class UPLID(Generic[PREFIX]):
             return self < other
         raise TypeError(f"Cannot compare {self.__class__} with {other.__class__}")
 
+    @staticmethod
+    def _validate_uid(v: str) -> KsuidMs:
+        if len(v) != 27:
+            raise ValueError(f"Expected encoded_uid to be 27 characters long, got {len(v)}")
+        try:
+            return KsuidMs.from_base62(v)
+        except OverflowError as e:
+            raise ValueError(f"Invalid encoded_uid: {v}") from e
+
     @property
     def datetime(self) -> Datetime:
         return self.uid.datetime
@@ -107,23 +115,12 @@ class UPLID(Generic[PREFIX]):
             raise ValueError(f"Expected prefix to be {prefix}, got {_prefix}")
         if not encoded_uid:
             raise ValueError("Expected encoded_uid to be a non-empty string")
-        if len(encoded_uid) != 27:
-            raise ValueError(
-                f"Expected encoded_uid to be 27 characters long, got {len(encoded_uid)}"
-            )
-        uid = KsuidMs.from_base62(encoded_uid)
+        uid = cls._validate_uid(encoded_uid)
         return cls(prefix, uid)
 
     @classmethod
     def generate(cls, prefix: PREFIX, at: Union[Datetime, None] = None) -> Self:
         return cls(prefix, KsuidMs(at))
-
-    @classmethod
-    def factory(cls, prefix: PREFIX) -> Callable[[], "UPLID[PREFIX]"]:
-        def f() -> UPLID[PREFIX]:
-            return cls.generate(prefix)
-
-        return f
 
     @classmethod
     def __get_pydantic_core_schema__(
@@ -174,11 +171,36 @@ class UPLID(Generic[PREFIX]):
         )
 
 
-def factory(lpid_type: Type[UPLID[PREFIX]]) -> Callable[[], UPLID[PREFIX]]:
-    literal_type = lpid_type.__args__[0]  # type: ignore
-    prefix: str = literal_type.__args__[0]
+def _get_prefix(uplid_type: Type[UPLID[PREFIX]]) -> PREFIX:
+    literal_type = uplid_type.__args__[0]  # type: ignore
+    return literal_type.__args__[0]  # type: ignore
+
+
+def factory(uplid_type: Type[UPLID[PREFIX]]) -> Callable[[], UPLID[PREFIX]]:
+    prefix = _get_prefix(uplid_type)
 
     def f() -> UPLID[PREFIX]:
-        return UPLID.generate(prefix)  # type: ignore
+        return UPLID.generate(prefix)
+
+    return f
+
+
+def validator(uplid_type: Type[UPLID[PREFIX]]) -> Callable[[str], UPLID[PREFIX]]:
+    prefix = _get_prefix(uplid_type)
+
+    def f(v: str) -> UPLID[PREFIX]:
+        try:
+            return UPLID.from_string(v, prefix)
+        except ValueError as e:
+            raise ValidationError.from_exception_data(
+                f"{prefix.capitalize()}Id",
+                [
+                    {
+                        "loc": (f"{prefix}_id",),
+                        "input": v,
+                        "type": PydanticCustomError("value_error", str(e)),
+                    }
+                ],
+            ) from e
 
     return f
