@@ -32,3 +32,33 @@ class TestUPLIDTypeProtocol:
         assert hasattr(UPLIDType, "__protocol_attrs__") or hasattr(
             UPLIDType, "_is_runtime_protocol"
         )
+
+
+class TestUPLIDConformsToProtocol:
+    def test_uplid_instance_matches_protocol(self) -> None:
+        from uplid import UPLID, UPLIDType
+
+        uid = UPLID.generate("usr")
+        assert isinstance(uid, UPLIDType)
+
+    def test_protocol_allows_generic_functions(self) -> None:
+        from uplid import UPLID, UPLIDType
+
+        def get_timestamp(id: UPLIDType) -> float:
+            return id.timestamp
+
+        uid = UPLID.generate("usr")
+        ts = get_timestamp(uid)
+        assert ts > 0
+
+    def test_protocol_allows_any_prefix(self) -> None:
+        from uplid import UPLID, UPLIDType
+
+        def format_id(id: UPLIDType) -> str:
+            return f"[{id.prefix}] {id.datetime.isoformat()}"
+
+        usr_id = UPLID.generate("usr")
+        api_id = UPLID.generate("api_key")
+
+        assert "[usr]" in format_id(usr_id)
+        assert "[api_key]" in format_id(api_id)
