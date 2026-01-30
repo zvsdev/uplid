@@ -19,3 +19,6 @@ htmlcov/
 .vscode/
 .idea/
 
+# uv lock file (not needed for libraries)
+uv.lock
+
