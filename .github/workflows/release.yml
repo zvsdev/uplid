@@ -45,7 +45,7 @@ jobs:
     needs: [check-version, ci]
     if: needs.check-version.outputs.changed == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 1
     environment: release
     permissions:
       contents: write
