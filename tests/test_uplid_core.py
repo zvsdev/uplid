@@ -204,3 +204,107 @@ class TestUPLIDPrefixLimits:
         max_prefix = "a" * 64
         uid = UPLID.generate(max_prefix)
         assert uid.prefix == max_prefix
+
+
+class TestUPLIDPrefixValidation:
+    def test_rejects_empty_prefix(self) -> None:
+        from uplid import UPLID, UPLIDError
+
+        with pytest.raises(UPLIDError, match="snake_case"):
+            UPLID.generate("")
+
+    def test_rejects_consecutive_underscores(self) -> None:
+        from uplid import UPLID, UPLIDError
+
+        with pytest.raises(UPLIDError, match="snake_case"):
+            UPLID.generate("api__key")
+
+    def test_rejects_numbers_in_prefix(self) -> None:
+        from uplid import UPLID, UPLIDError
+
+        with pytest.raises(UPLIDError, match="snake_case"):
+            UPLID.generate("user123")
+
+    def test_rejects_mixed_case(self) -> None:
+        from uplid import UPLID, UPLIDError
+
+        with pytest.raises(UPLIDError, match="snake_case"):
+            UPLID.generate("userId")
+
+
+class TestUPLIDFromStringEdgeCases:
+    def test_rejects_empty_uid_part(self) -> None:
+        from uplid import UPLID, UPLIDError
+
+        with pytest.raises(UPLIDError, match="22 characters"):
+            UPLID.from_string("usr_", "usr")
+
+    def test_rejects_long_prefix_in_string(self) -> None:
+        from uplid import UPLID, UPLIDError
+
+        long_prefix = "a" * 65
+        with pytest.raises(UPLIDError, match="at most 64 characters"):
+            UPLID.from_string(f"{long_prefix}_{'0' * 22}", long_prefix)
+
+    def test_rejects_consecutive_underscores_in_string(self) -> None:
+        from uplid import UPLID, UPLIDError
+
+        with pytest.raises(UPLIDError, match="snake_case"):
+            UPLID.from_string(f"api__key_{'0' * 22}", "api__key")
+
+
+class TestUPLIDDirectConstruction:
+    def test_init_validates_prefix(self) -> None:
+        from uuid import uuid7
+
+        from uplid import UPLID, UPLIDError
+
+        with pytest.raises(UPLIDError, match="snake_case"):
+            UPLID("INVALID", uuid7())
+
+    def test_init_accepts_valid_prefix(self) -> None:
+        from uuid import uuid7
+
+        from uplid import UPLID
+
+        u = uuid7()
+        uid = UPLID("usr", u)
+        assert uid.prefix == "usr"
+        assert uid.uid == u
+
+
+class TestParseHelper:
+    def test_parse_creates_parser(self) -> None:
+        from typing import Literal
+
+        from uplid import UPLID, parse
+
+        UserId = UPLID[Literal["usr"]]  # noqa: N806
+        parse_user_id = parse(UserId)
+
+        uid = UPLID.generate("usr")
+        parsed = parse_user_id(str(uid))
+        assert parsed == uid
+
+    def test_parse_rejects_wrong_prefix(self) -> None:
+        from typing import Literal
+
+        from uplid import UPLID, UPLIDError, parse
+
+        UserId = UPLID[Literal["usr"]]  # noqa: N806
+        parse_user_id = parse(UserId)
+
+        org_id = UPLID.generate("org")
+        with pytest.raises(UPLIDError, match="Expected prefix"):
+            parse_user_id(str(org_id))
+
+    def test_parse_rejects_invalid_string(self) -> None:
+        from typing import Literal
+
+        from uplid import UPLID, UPLIDError, parse
+
+        UserId = UPLID[Literal["usr"]]  # noqa: N806
+        parse_user_id = parse(UserId)
+
+        with pytest.raises(UPLIDError):
+            parse_user_id("not_valid")

@@ -157,3 +157,20 @@ class TestPydanticErrorMessages:
 
             class Bad(BaseModel):
                 id: UPLID
+
+    def test_rejects_non_string_non_uplid(self) -> None:
+        from uplid import UPLID
+
+        UserId = UPLID[Literal["usr"]]  # noqa: N806
+
+        class User(BaseModel):
+            id: UserId
+
+        with pytest.raises(ValidationError):
+            User(id=12345)  # type: ignore[arg-type]
+
+        with pytest.raises(ValidationError):
+            User(id={"key": "value"})  # type: ignore[arg-type]
+
+        with pytest.raises(ValidationError):
+            User(id=None)  # type: ignore[arg-type]

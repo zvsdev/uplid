@@ -40,3 +40,14 @@ class TestBase62Encoding:
 
         with pytest.raises(KeyError):
             _base62_to_int("invalid!")
+
+    def test_input_exceeding_max_length_raises(self) -> None:
+        from uplid.uplid import _base62_to_int
+
+        with pytest.raises(ValueError, match="maximum length"):
+            _base62_to_int("0" * 23)  # 23 > 22
+
+    def test_all_zeros_decodes_to_zero(self) -> None:
+        from uplid.uplid import _base62_to_int
+
+        assert _base62_to_int("0" * 22) == 0

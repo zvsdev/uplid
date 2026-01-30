@@ -25,10 +25,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-# =============================================================================
-# Constants
-# =============================================================================
-
 # Base62 encoding: 0-9, A-Z, a-z (62 characters)
 # IMPORTANT: '0' must be first character for zfill padding to work correctly
 _BASE62_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
@@ -51,18 +47,8 @@ _PREFIX_PATTERN = re.compile(r"^[a-z]([a-z]*(_[a-z]+)*)?$")
 _PREFIX_MAX_LENGTH = 64
 
 
-# =============================================================================
-# Exceptions
-# =============================================================================
-
-
 class UPLIDError(ValueError):
     """Raised when UPLID parsing or validation fails."""
-
-
-# =============================================================================
-# Protocol
-# =============================================================================
 
 
 @runtime_checkable
@@ -106,11 +92,6 @@ class UPLIDType(Protocol):
         ...
 
 
-# =============================================================================
-# Base62 Encoding
-# =============================================================================
-
-
 def _int_to_base62(num: int) -> str:
     """Convert integer to base62 string, padded to 22 chars for UUIDv7."""
     if num == 0:
@@ -137,11 +118,6 @@ def _base62_to_int(s: str) -> int:
     for char in s:
         result = result * 62 + _BASE62_DECODE_MAP[char]
     return result
-
-
-# =============================================================================
-# UPLID Class
-# =============================================================================
 
 
 def _validate_prefix(prefix: str) -> None:
@@ -338,8 +314,7 @@ class UPLID[PREFIX: LiteralString]:
         parsed_prefix = string[:last_underscore]
         encoded_uid = string[last_underscore + 1 :]
 
-        if not _PREFIX_PATTERN.match(parsed_prefix):
-            raise UPLIDError(f"Prefix must be snake_case, got {parsed_prefix!r}")
+        _validate_prefix(parsed_prefix)
 
         if parsed_prefix != prefix:
             raise UPLIDError(f"Expected prefix {prefix!r}, got {parsed_prefix!r}")
@@ -417,18 +392,16 @@ class UPLID[PREFIX: LiteralString]:
         )
 
 
-# =============================================================================
-# Helper Functions
-# =============================================================================
-
-
 def _get_prefix[PREFIX: LiteralString](uplid_type: type[UPLID[PREFIX]]) -> str:
     """Extract the prefix string from a parameterized UPLID type."""
-    args = getattr(uplid_type, "__args__", None)
+    args = get_args(uplid_type)
     if not args:
         raise UPLIDError("UPLID type must be parameterized with a Literal prefix")
     literal_type = args[0]
     literal_args = get_args(literal_type)
+    # Handle TypeVar case (Python 3.12+ type parameter syntax)
+    if not literal_args and hasattr(literal_type, "__value__"):
+        literal_args = get_args(literal_type.__value__)
     if not literal_args:
         raise UPLIDError(f"Could not extract prefix from {literal_type}")
     return literal_args[0]
