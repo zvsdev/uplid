@@ -24,6 +24,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "pytest>=9.0.2,<10",
+    "pytest-cov>=6.1.1,<7",
     "hypothesis>=6.151.4,<7",
     "ty>=0.0.14,<0.1",
     "ruff>=0.14.14,<0.15",
@@ -39,7 +40,7 @@ select = [
     "E", "W", "F", "I", "B", "S", "A", "T20", "RET", "SLF", "SLOT", "TRY", "FBT",
     "ANN", "TCH", "C4", "SIM", "ARG", "ERA", "PIE", "PERF", "FURB", "UP", "N", "Q", "RUF", "D",
 ]
-ignore = ["D100", "D104", "D107", "ANN101", "ANN102", "TRY003"]
+ignore = ["D100", "D104", "D107", "TRY003"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["uplid"]
@@ -63,3 +64,15 @@ python-version = "3.14"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = ["--cov=uplid", "--cov-report=term-missing", "--cov-fail-under=95"]
+
+[tool.coverage.run]
+branch = true
+source = ["src/uplid"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "\\.\\.\\.",
+]

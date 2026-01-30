@@ -7,8 +7,11 @@ from typing import Literal
 from uuid import UUID, uuid7
 
 import pytest
+from hypothesis import given, settings
 
 from uplid import UPLID, UPLIDError, parse
+
+from .conftest import prefix_strategy
 
 
 class TestUPLIDGeneration:
@@ -41,6 +44,14 @@ class TestUPLIDGeneration:
         uid = UPLID.generate("x")
         assert uid.prefix == "x"
 
+    @given(prefix_strategy)
+    @settings(max_examples=50)
+    def test_generate_always_returns_valid_uplid(self, prefix: str) -> None:
+        uid = UPLID.generate(prefix)
+        assert uid.prefix == prefix
+        assert isinstance(uid.uid, UUID)
+        assert len(uid.base62_uid) == 22
+
 
 class TestUPLIDStringConversion:
     def test_str_format(self) -> None:
@@ -49,11 +60,12 @@ class TestUPLIDStringConversion:
         assert s.startswith("usr_")
         assert len(s) == 4 + 22  # prefix + underscore + base62
 
-    def test_repr_shows_values(self) -> None:
+    def test_repr_shows_prefix_and_uid(self) -> None:
         uid = UPLID.generate("usr")
         r = repr(uid)
         assert r.startswith("UPLID(")
         assert "'usr'" in r
+        assert uid.base62_uid in r
 
 
 class TestUPLIDParsing:
@@ -91,7 +103,6 @@ class TestUPLIDProperties:
         uid = UPLID.generate("usr")
         after = datetime.now(UTC)
 
-        # Allow 1ms tolerance due to millisecond precision in UUIDv7
         tolerance = timedelta(milliseconds=1)
         assert before - tolerance <= uid.datetime <= after + tolerance
 
@@ -100,7 +111,6 @@ class TestUPLIDProperties:
         uid = UPLID.generate("usr")
         after = datetime.now(UTC).timestamp()
 
-        # Allow 1ms tolerance due to millisecond precision in UUIDv7
         tolerance = 0.001
         assert before - tolerance <= uid.timestamp <= after + tolerance
 
@@ -108,7 +118,11 @@ class TestUPLIDProperties:
         uid = UPLID.generate("usr")
         first = uid.base62_uid
         second = uid.base62_uid
-        assert first is second  # Same object, not just equal
+        assert first is second
+
+    def test_datetime_and_timestamp_are_consistent(self) -> None:
+        uid = UPLID.generate("usr")
+        assert abs(uid.datetime.timestamp() - uid.timestamp) < 0.001
 
 
 class TestUPLIDPickle:
@@ -125,22 +139,29 @@ class TestUPLIDPickle:
         restored = pickle.loads(pickle.dumps(original))
         assert original == restored
 
+    @given(prefix_strategy)
+    @settings(max_examples=20)
+    def test_pickle_roundtrip_any_prefix(self, prefix: str) -> None:
+        original = UPLID.generate(prefix)
+        restored = pickle.loads(pickle.dumps(original))
+        assert original == restored
+
 
 class TestUPLIDCopy:
     def test_copy_returns_self(self) -> None:
         uid = UPLID.generate("usr")
         copied = copy.copy(uid)
-        assert copied is uid  # Same object, not a copy
+        assert copied is uid
 
     def test_deepcopy_returns_self(self) -> None:
         uid = UPLID.generate("usr")
         copied = copy.deepcopy(uid)
-        assert copied is uid  # Same object, not a copy
+        assert copied is uid
 
 
 class TestUPLIDPrefixLimits:
     def test_rejects_prefix_exceeding_max_length(self) -> None:
-        long_prefix = "a" * 65  # 65 > 64 max
+        long_prefix = "a" * 65
         with pytest.raises(UPLIDError, match="at most 64 characters"):
             UPLID.generate(long_prefix)
 
@@ -218,3 +239,24 @@ class TestParseHelper:
 
         with pytest.raises(UPLIDError):
             parse_user_id("not_valid")
+
+
+class TestErrorMessageQuality:
+    def test_prefix_error_shows_actual_value(self) -> None:
+        with pytest.raises(UPLIDError, match="got 'BAD_PREFIX'"):
+            UPLID.generate("BAD_PREFIX")
+
+    def test_wrong_prefix_error_shows_both_values(self) -> None:
+        uid = UPLID.generate("usr")
+        with pytest.raises(UPLIDError) as exc_info:
+            UPLID.from_string(str(uid), "org")
+        assert "usr" in str(exc_info.value)
+        assert "org" in str(exc_info.value)
+
+    def test_length_error_shows_actual_length(self) -> None:
+        with pytest.raises(UPLIDError, match="got 5"):
+            UPLID.from_string("usr_short", "usr")
+
+    def test_max_length_error_shows_limit(self) -> None:
+        with pytest.raises(UPLIDError, match="64"):
+            UPLID.generate("a" * 100)

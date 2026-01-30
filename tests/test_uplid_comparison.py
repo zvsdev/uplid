@@ -1,17 +1,13 @@
 from __future__ import annotations
 
-import time
-from uuid import uuid7
+from uuid import UUID, uuid7
 
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from uplid import UPLID
 
-
-prefix_strategy = st.from_regex(r"[a-z]([a-z_]*[a-z])?", fullmatch=True).filter(
-    lambda s: "__" not in s and len(s) <= 20
-)
+from .conftest import prefix_strategy
 
 
 class TestUPLIDEquality:
@@ -21,7 +17,6 @@ class TestUPLIDEquality:
         assert uid1 == uid2
 
     def test_different_prefixes_not_equal(self) -> None:
-        # Same UUID, different prefix
         u = uuid7()
         uid1 = UPLID("usr", u)
         uid2 = UPLID("org", u)
@@ -45,12 +40,34 @@ class TestUPLIDEquality:
         uid = UPLID.generate(prefix)
         assert uid == uid
 
+    @given(prefix_strategy)
+    def test_equality_is_symmetric(self, prefix: str) -> None:
+        uid1 = UPLID.generate(prefix)
+        uid2 = UPLID.from_string(str(uid1), prefix)
+        assert uid1 == uid2
+        assert uid2 == uid1  # Symmetry: a == b implies b == a
+
+    def test_equality_is_transitive(self) -> None:
+        uid1 = UPLID.generate("usr")
+        uid2 = UPLID.from_string(str(uid1), "usr")
+        uid3 = UPLID.from_string(str(uid2), "usr")
+        assert uid1 == uid2
+        assert uid2 == uid3
+        assert uid1 == uid3  # Transitivity: a == b and b == c implies a == c
+
 
 class TestUPLIDHashing:
     def test_equal_uplids_have_equal_hashes(self) -> None:
         uid1 = UPLID.generate("usr")
         uid2 = UPLID.from_string(str(uid1), "usr")
         assert hash(uid1) == hash(uid2)
+
+    @given(prefix_strategy)
+    def test_hash_consistent_with_equality(self, prefix: str) -> None:
+        uid1 = UPLID.generate(prefix)
+        uid2 = UPLID.from_string(str(uid1), prefix)
+        if uid1 == uid2:
+            assert hash(uid1) == hash(uid2)
 
     def test_can_use_as_dict_key(self) -> None:
         uid = UPLID.generate("usr")
@@ -67,19 +84,25 @@ class TestUPLIDHashing:
 
 
 class TestUPLIDOrdering:
-    def test_sorts_by_timestamp(self) -> None:
-        first = UPLID.generate("usr")
-        time.sleep(0.002)  # Ensure different ms timestamp
-        second = UPLID.generate("usr")
-        time.sleep(0.002)
-        third = UPLID.generate("usr")
+    def test_ordering_with_deterministic_uuids(self) -> None:
+        # Use deterministic UUIDs to avoid time.sleep flakiness
+        # UUIDv7 with earlier timestamp should sort first
+        early_uuid = UUID("01900000-0000-7000-8000-000000000001")
+        later_uuid = UUID("01900000-0001-7000-8000-000000000001")
 
-        assert first < second < third
-        assert sorted([third, first, second]) == [first, second, third]
+        first = UPLID("usr", early_uuid)
+        second = UPLID("usr", later_uuid)
+
+        assert first < second
+        assert second > first
+        assert first <= second
+        assert second >= first
 
     def test_sorts_by_prefix_first(self) -> None:
-        a = UPLID.generate("aaa")
-        z = UPLID.generate("zzz")
+        # Same UUID, different prefixes - should sort by prefix
+        u = uuid7()
+        a = UPLID("aaa", u)
+        z = UPLID("zzz", u)
         assert a < z
 
     def test_comparison_with_non_uplid_returns_not_implemented(self) -> None:
@@ -89,9 +112,25 @@ class TestUPLIDOrdering:
         assert uid.__gt__("string") == NotImplemented
         assert uid.__ge__("string") == NotImplemented
 
-    @given(st.lists(prefix_strategy, min_size=2, max_size=5))
+    def test_ordering_transitivity(self) -> None:
+        # Use deterministic UUIDs
+        uuid1 = UUID("01900000-0000-7000-8000-000000000001")
+        uuid2 = UUID("01900000-0001-7000-8000-000000000001")
+        uuid3 = UUID("01900000-0002-7000-8000-000000000001")
+
+        a = UPLID("usr", uuid1)
+        b = UPLID("usr", uuid2)
+        c = UPLID("usr", uuid3)
+
+        assert a < b
+        assert b < c
+        assert a < c  # Transitivity
+
+    @given(st.lists(prefix_strategy, min_size=3, max_size=5, unique=True))
     @settings(max_examples=20)
-    def test_ordering_is_consistent(self, prefixes: list[str]) -> None:
+    def test_sorting_is_stable(self, prefixes: list[str]) -> None:
         ids = [UPLID.generate(p) for p in prefixes]
-        sorted_ids = sorted(ids)
-        assert sorted(sorted_ids) == sorted_ids
+        sorted_once = sorted(ids)
+        sorted_twice = sorted(sorted_once)
+        sorted_reverse = sorted(sorted(ids, reverse=True))
+        assert sorted_once == sorted_twice == sorted_reverse

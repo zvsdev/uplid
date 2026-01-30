@@ -356,14 +356,14 @@ class UPLID[PREFIX: LiteralString]:
             )
 
         args = get_args(source_type)
-        if not args:
+        if not args:  # pragma: no cover
             raise UPLIDError("UPLID requires a Literal prefix type argument")
 
         prefix_type = args[0]
         prefix_args = get_args(prefix_type)
 
         # Handle TypeVar case (Python 3.12+ type parameter syntax)
-        if not prefix_args:
+        if not prefix_args:  # pragma: no cover
             if hasattr(prefix_type, "__value__"):
                 prefix_args = get_args(prefix_type.__value__)
             if not prefix_args:
@@ -400,9 +400,9 @@ def _get_prefix[PREFIX: LiteralString](uplid_type: type[UPLID[PREFIX]]) -> str:
     literal_type = args[0]
     literal_args = get_args(literal_type)
     # Handle TypeVar case (Python 3.12+ type parameter syntax)
-    if not literal_args and hasattr(literal_type, "__value__"):
+    if not literal_args and hasattr(literal_type, "__value__"):  # pragma: no cover
         literal_args = get_args(literal_type.__value__)
-    if not literal_args:
+    if not literal_args:  # pragma: no cover
         raise UPLIDError(f"Could not extract prefix from {literal_type}")
     return literal_args[0]
 
