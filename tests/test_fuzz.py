@@ -1,6 +1,8 @@
 # tests/test_fuzz.py
 from __future__ import annotations
 
+import contextlib
+
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -13,10 +15,8 @@ class TestParserFuzzing:
         """Parser should raise UPLIDError, never crash."""
         from uplid import UPLID, UPLIDError
 
-        try:
+        with contextlib.suppress(UPLIDError):
             UPLID.from_string(s, "test")
-        except UPLIDError:
-            pass  # Expected for invalid input
 
     @given(st.text())
     @settings(max_examples=500)
@@ -24,10 +24,8 @@ class TestParserFuzzing:
         """Parser should handle any prefix gracefully."""
         from uplid import UPLID, UPLIDError
 
-        try:
+        with contextlib.suppress(UPLIDError):
             UPLID.from_string(f"usr_{s}", "usr")
-        except UPLIDError:
-            pass  # Expected for invalid input
 
     @given(st.binary())
     @settings(max_examples=200)
@@ -49,10 +47,8 @@ class TestPrefixFuzzing:
         """Generate should validate prefix and never crash."""
         from uplid import UPLID, UPLIDError
 
-        try:
+        with contextlib.suppress(UPLIDError):
             UPLID.generate(prefix)
-        except UPLIDError:
-            pass  # Expected for invalid prefix
 
 
 class TestEdgeCases:

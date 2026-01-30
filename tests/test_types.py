@@ -44,18 +44,18 @@ class TestUPLIDConformsToProtocol:
     def test_protocol_allows_generic_functions(self) -> None:
         from uplid import UPLID, UPLIDType
 
-        def get_timestamp(id: UPLIDType) -> float:
-            return id.timestamp
+        def get_datetime(uplid: UPLIDType) -> float:
+            return uplid.datetime.timestamp()
 
         uid = UPLID.generate("usr")
-        ts = get_timestamp(uid)
+        ts = get_datetime(uid)
         assert ts > 0
 
     def test_protocol_allows_any_prefix(self) -> None:
         from uplid import UPLID, UPLIDType
 
-        def format_id(id: UPLIDType) -> str:
-            return f"[{id.prefix}] {id.datetime.isoformat()}"
+        def format_id(uplid: UPLIDType) -> str:
+            return f"[{uplid.prefix}] {uplid.datetime.isoformat()}"
 
         usr_id = UPLID.generate("usr")
         api_id = UPLID.generate("api_key")
