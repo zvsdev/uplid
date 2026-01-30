@@ -19,15 +19,18 @@ from uplid import UPLID, UPLIDError, UPLIDType, factory, parse
 from typing import Literal
 from uplid import UPLID, factory, parse
 
-# Define typed aliases
+# Define typed aliases and factories
 UserId = UPLID[Literal["usr"]]
 OrgId = UPLID[Literal["org"]]
+UserIdFactory = factory(UserId)
+parse_user_id = parse(UserId)
 
 # Generate
 uid = UPLID.generate("usr")  # usr_0M3xL9kQ7vR2nP5wY1jZ4c
 
 # Parse
 uid = UPLID.from_string("usr_0M3xL9kQ7vR2nP5wY1jZ4c", "usr")
+uid = parse_user_id("usr_0M3xL9kQ7vR2nP5wY1jZ4c")  # same thing
 
 # Properties
 uid.prefix      # str: "usr"
@@ -47,9 +50,10 @@ from pydantic import BaseModel, Field
 from uplid import UPLID, factory
 
 UserId = UPLID[Literal["usr"]]
+UserIdFactory = factory(UserId)
 
 class User(BaseModel):
-    id: UserId = Field(default_factory=factory(UserId))
+    id: UserId = Field(default_factory=UserIdFactory)
     name: str
 
 # Auto-generates ID
@@ -63,18 +67,48 @@ user.model_dump()      # {"id": "usr_...", "name": "..."}
 user.model_dump_json() # '{"id": "usr_...", "name": "..."}'
 ```
 
-## Parse Helper
+## FastAPI Integration
 
 ```python
-from uplid import parse, UPLIDError
+from typing import Annotated
+from fastapi import Depends, FastAPI, HTTPException
+from uplid import UPLID, UPLIDError, factory, parse
 
 UserId = UPLID[Literal["usr"]]
+UserIdFactory = factory(UserId)
 parse_user_id = parse(UserId)
 
-try:
-    uid = parse_user_id("usr_0M3xL9kQ7vR2nP5wY1jZ4c")
-except UPLIDError as e:
-    print(f"Invalid: {e}")
+# Dependency for path/query param validation
+def get_user_id(user_id: str) -> UserId:
+    try:
+        return parse_user_id(user_id)
+    except UPLIDError as e:
+        raise HTTPException(422, f"Invalid user ID: {e}") from None
+
+app = FastAPI()
+
+@app.get("/users/{user_id}")
+def get_user(user_id: Annotated[UserId, Depends(get_user_id)]) -> User:
+    ...
+```
+
+## SQLAlchemy Storage
+
+Store as VARCHAR(87): 64 (max prefix) + 1 (underscore) + 22 (base62).
+
+```python
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+class UserRow(Base):
+    id: Mapped[str] = mapped_column(String(87), primary_key=True)
+
+# Store
+user = UserRow(id=str(UPLID.generate("usr")), name="Alice")
+
+# Retrieve and parse
+row = session.query(UserRow).first()
+uid = UPLID.from_string(row.id, "usr")
 ```
 
 ## UPLIDType Protocol
@@ -100,15 +134,6 @@ def log_entity(id: UPLIDType) -> None:
 `{prefix}_{base62}` where base62 is 22 characters encoding a UUIDv7.
 
 Example: `usr_0M3xL9kQ7vR2nP5wY1jZ4c`
-
-## Database Storage
-
-Store as VARCHAR(87): 64 (max prefix) + 1 (underscore) + 22 (base62).
-
-```python
-# SQLAlchemy
-id: Mapped[str] = mapped_column(String(87), primary_key=True)
-```
 
 ## Error Handling
 

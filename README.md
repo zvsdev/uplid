@@ -33,13 +33,14 @@ from typing import Literal
 from pydantic import BaseModel, Field
 from uplid import UPLID, factory
 
-# Define typed ID aliases
+# Define typed aliases and factories
 UserId = UPLID[Literal["usr"]]
 OrgId = UPLID[Literal["org"]]
+UserIdFactory = factory(UserId)
 
 # Use in Pydantic models
 class User(BaseModel):
-    id: UserId = Field(default_factory=factory(UserId))
+    id: UserId = Field(default_factory=UserIdFactory)
     org_id: OrgId
 
 # Generate IDs
@@ -60,20 +61,33 @@ print(parsed.timestamp)  # 1738240496.789
 ## FastAPI Integration
 
 ```python
-from typing import Literal
-from fastapi import FastAPI, HTTPException
+from typing import Annotated, Literal
+from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from uplid import UPLID, factory, parse, UPLIDError
+from uplid import UPLID, UPLIDError, factory, parse
 
+# Define types and helpers
 UserId = UPLID[Literal["usr"]]
+UserIdFactory = factory(UserId)
 parse_user_id = parse(UserId)
 
+
 class User(BaseModel):
-    id: UserId = Field(default_factory=factory(UserId))
+    id: UserId = Field(default_factory=UserIdFactory)
     name: str
+
 
 app = FastAPI()
 users: dict[str, User] = {}
+
+
+# Dependency for validating path parameters
+def get_user_id(user_id: str) -> UserId:
+    try:
+        return parse_user_id(user_id)
+    except UPLIDError as e:
+        raise HTTPException(422, f"Invalid user ID: {e}") from None
+
 
 @app.post("/users")
 def create_user(name: str) -> User:
@@ -81,15 +95,13 @@ def create_user(name: str) -> User:
     users[str(user.id)] = user
     return user
 
+
+# Use Depends for path parameter validation
 @app.get("/users/{user_id}")
-def get_user(user_id: str) -> User:
-    try:
-        parsed = parse_user_id(user_id)
-    except UPLIDError:
-        raise HTTPException(400, "Invalid user ID format")
-    if str(parsed) not in users:
+def get_user(user_id: Annotated[UserId, Depends(get_user_id)]) -> User:
+    if str(user_id) not in users:
         raise HTTPException(404, "User not found")
-    return users[str(parsed)]
+    return users[str(user_id)]
 ```
 
 ## Database Storage
@@ -97,15 +109,39 @@ def get_user(user_id: str) -> User:
 UPLIDs serialize to strings. Store as `VARCHAR(87)` (64 char prefix + 1 underscore + 22 char base62):
 
 ```python
-# SQLAlchemy
-from sqlalchemy import String
-from sqlalchemy.orm import mapped_column
+from typing import Literal
+from sqlalchemy import String, create_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session
+from uplid import UPLID, factory
 
-class User(Base):
+UserId = UPLID[Literal["usr"]]
+UserIdFactory = factory(UserId)
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class UserRow(Base):
+    __tablename__ = "users"
+
     id: Mapped[str] = mapped_column(String(87), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+
 
 # Create with UPLID, store as string
-user = User(id=str(UPLID.generate("usr")))
+engine = create_engine("sqlite:///:memory:")
+Base.metadata.create_all(engine)
+
+with Session(engine) as session:
+    user = UserRow(id=str(UPLID.generate("usr")), name="Alice")
+    session.add(user)
+    session.commit()
+
+    # Query and parse back to UPLID
+    row = session.query(UserRow).first()
+    user_id = UPLID.from_string(row.id, "usr")
+    print(user_id.datetime)  # When the ID was created
 ```
 
 ## Prefix Rules
@@ -130,11 +166,11 @@ uid = UPLID.generate("usr")
 uid = UPLID.from_string("usr_0M3xL9kQ7vR2nP5wY1jZ4c", "usr")
 
 # Properties
-uid.prefix      # "usr"
-uid.uid         # UUID object (UUIDv7)
-uid.datetime    # datetime (UTC) from UUIDv7 timestamp
-uid.timestamp   # float (Unix timestamp in seconds)
-uid.base62_uid  # "0M3xL9kQ7vR2nP5wY1jZ4c" (22 chars)
+uid.prefix      # str: "usr"
+uid.uid         # UUID: underlying UUIDv7
+uid.base62_uid  # str: 22-char base62 encoding
+uid.datetime    # datetime: UTC timestamp from UUIDv7
+uid.timestamp   # float: Unix timestamp in seconds
 ```
 
 ### `factory(UPLIDType)`
@@ -143,9 +179,10 @@ Creates a factory function for Pydantic's `default_factory`.
 
 ```python
 UserId = UPLID[Literal["usr"]]
+UserIdFactory = factory(UserId)
 
 class User(BaseModel):
-    id: UserId = Field(default_factory=factory(UserId))
+    id: UserId = Field(default_factory=UserIdFactory)
 ```
 
 ### `parse(UPLIDType)`
