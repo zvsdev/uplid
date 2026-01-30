@@ -1,0 +1,119 @@
+# UPLID - LLM Reference
+
+Type-safe prefixed IDs for Python 3.14+. Built on UUIDv7, base62 encoded.
+
+## Install
+```
+pip install uplid
+```
+Requires: Python 3.14+, Pydantic 2.10+
+
+## Exports
+```python
+from uplid import UPLID, UPLIDError, UPLIDType, factory, parse
+```
+
+## Core Usage
+
+```python
+from typing import Literal
+from uplid import UPLID, factory, parse
+
+# Define typed aliases
+UserId = UPLID[Literal["usr"]]
+OrgId = UPLID[Literal["org"]]
+
+# Generate
+uid = UPLID.generate("usr")  # usr_0M3xL9kQ7vR2nP5wY1jZ4c
+
+# Parse
+uid = UPLID.from_string("usr_0M3xL9kQ7vR2nP5wY1jZ4c", "usr")
+
+# Properties
+uid.prefix      # str: "usr"
+uid.uid         # UUID: underlying UUIDv7
+uid.base62_uid  # str: 22-char base62
+uid.datetime    # datetime: UTC timestamp from UUIDv7
+uid.timestamp   # float: Unix timestamp
+
+# String conversion
+str(uid)  # "usr_0M3xL9kQ7vR2nP5wY1jZ4c"
+```
+
+## Pydantic Models
+
+```python
+from pydantic import BaseModel, Field
+from uplid import UPLID, factory
+
+UserId = UPLID[Literal["usr"]]
+
+class User(BaseModel):
+    id: UserId = Field(default_factory=factory(UserId))
+    name: str
+
+# Auto-generates ID
+user = User(name="Alice")
+
+# Validates from string
+user = User(id="usr_0M3xL9kQ7vR2nP5wY1jZ4c", name="Bob")
+
+# Serializes to string
+user.model_dump()      # {"id": "usr_...", "name": "..."}
+user.model_dump_json() # '{"id": "usr_...", "name": "..."}'
+```
+
+## Parse Helper
+
+```python
+from uplid import parse, UPLIDError
+
+UserId = UPLID[Literal["usr"]]
+parse_user_id = parse(UserId)
+
+try:
+    uid = parse_user_id("usr_0M3xL9kQ7vR2nP5wY1jZ4c")
+except UPLIDError as e:
+    print(f"Invalid: {e}")
+```
+
+## UPLIDType Protocol
+
+For functions accepting any UPLID:
+
+```python
+from uplid import UPLIDType
+
+def log_entity(id: UPLIDType) -> None:
+    print(f"{id.prefix} at {id.datetime}")
+```
+
+## Prefix Rules
+
+- snake_case only: `usr`, `api_key`, `org_member`
+- Lowercase letters + single underscores
+- Cannot start/end with underscore
+- Max 64 characters
+
+## Format
+
+`{prefix}_{base62}` where base62 is 22 characters encoding a UUIDv7.
+
+Example: `usr_0M3xL9kQ7vR2nP5wY1jZ4c`
+
+## Database Storage
+
+Store as VARCHAR(87): 64 (max prefix) + 1 (underscore) + 22 (base62).
+
+```python
+# SQLAlchemy
+id: Mapped[str] = mapped_column(String(87), primary_key=True)
+```
+
+## Error Handling
+
+`UPLIDError` extends `ValueError`. Raised for:
+- Invalid prefix format
+- Wrong prefix on parse
+- Invalid base62 encoding
+- Malformed string format
