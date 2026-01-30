@@ -6,12 +6,25 @@ import os
 import re
 from datetime import UTC
 from datetime import datetime as dt_datetime
-from typing import TYPE_CHECKING, LiteralString, Protocol, Self, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    LiteralString,
+    Protocol,
+    Self,
+    get_args,
+    get_origin,
+    runtime_checkable,
+)
 from uuid import UUID, uuid7
+
+from pydantic import ValidationError
+from pydantic_core import CoreSchema, PydanticCustomError, core_schema
 
 
 if TYPE_CHECKING:
     import datetime as dt
+    from collections.abc import Callable
 
 
 PREFIX_PATTERN = re.compile(r"^[a-z]([a-z_]*[a-z])?$")
@@ -204,3 +217,101 @@ class UPLID[PREFIX: LiteralString]:
         instance = cls(prefix, uid)
         instance._base62_uid = encoded_uid
         return instance
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls,
+        source_type: Any,  # noqa: ANN401
+        handler: Any,  # noqa: ANN401
+    ) -> CoreSchema:
+        """Pydantic integration for validation and serialization."""
+        origin = get_origin(source_type)
+        if origin is None:
+            raise UPLIDError(
+                "UPLID must be parameterized with a prefix literal, e.g. UPLID[Literal['usr']]"
+            )
+
+        args = get_args(source_type)
+        if not args:
+            raise UPLIDError("UPLID requires a Literal prefix type argument")
+
+        prefix_type = args[0]
+        prefix_args = get_args(prefix_type)
+
+        if not prefix_args:
+            if hasattr(prefix_type, "__value__"):
+                prefix_args = get_args(prefix_type.__value__)
+            if not prefix_args:
+                raise UPLIDError(f"Could not extract prefix from {prefix_type}")
+
+        prefix_str: str = prefix_args[0]
+
+        def validate(v: UPLID[Any] | str) -> UPLID[Any]:
+            if isinstance(v, str):
+                return cls.from_string(v, prefix_str)
+            if isinstance(v, UPLID):
+                if v.prefix != prefix_str:
+                    raise UPLIDError(f"Expected prefix {prefix_str!r}, got {v.prefix!r}")
+                return v
+            raise UPLIDError(f"Expected UPLID or str, got {type(v).__name__}")
+
+        return core_schema.json_or_python_schema(
+            json_schema=core_schema.chain_schema(
+                [
+                    core_schema.str_schema(),
+                    core_schema.no_info_plain_validator_function(validate),
+                ]
+            ),
+            python_schema=core_schema.no_info_plain_validator_function(validate),
+            serialization=core_schema.plain_serializer_function_ser_schema(str),
+        )
+
+
+def _get_prefix[PREFIX: LiteralString](uplid_type: type[UPLID[PREFIX]]) -> str:
+    """Extract the prefix string from a parameterized UPLID type."""
+    args = getattr(uplid_type, "__args__", None)
+    if not args:
+        raise UPLIDError("UPLID type must be parameterized with a Literal prefix")
+    literal_type = args[0]
+    literal_args = get_args(literal_type)
+    if not literal_args:
+        raise UPLIDError(f"Could not extract prefix from {literal_type}")
+    return literal_args[0]
+
+
+def factory[PREFIX: LiteralString](
+    uplid_type: type[UPLID[PREFIX]],
+) -> Callable[[], UPLID[PREFIX]]:
+    """Create a factory function for generating new UPLIDs of a specific type."""
+    prefix = _get_prefix(uplid_type)
+
+    def _factory() -> UPLID[PREFIX]:
+        return UPLID.generate(prefix)
+
+    return _factory
+
+
+def validator[PREFIX: LiteralString](
+    uplid_type: type[UPLID[PREFIX]],
+) -> Callable[[str], UPLID[PREFIX]]:
+    """Create a validator function for parsing UPLIDs of a specific type."""
+    prefix = _get_prefix(uplid_type)
+
+    def _validator(v: str) -> UPLID[PREFIX]:
+        try:
+            return UPLID.from_string(v, prefix)
+        except UPLIDError as e:
+            raise ValidationError.from_exception_data(
+                f"{prefix.replace('_', ' ').title().replace(' ', '')}Id",
+                [
+                    {
+                        "loc": (f"{prefix}_id",),
+                        "input": v,
+                        "type": PydanticCustomError(
+                            "uplid_error", "{error_message}", {"error_message": str(e)}
+                        ),
+                    }
+                ],
+            ) from e
+
+    return _validator

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import time
 
-import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -120,4 +119,5 @@ class TestUPLIDOrdering:
         from uplid import UPLID
 
         ids = [UPLID.generate(p) for p in prefixes]
-        assert sorted(sorted(ids)) == sorted(ids)
+        sorted_ids = sorted(ids)
+        assert sorted(sorted_ids) == sorted_ids
