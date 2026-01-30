@@ -1,118 +1,138 @@
-# UPLID - Universal Prefixed Literal Unique Id
+# UPLID
 
-A pydantic compatible, human friendly prefixed id.
+Universal Prefixed Literal IDs - type-safe, human-readable identifiers for Python 3.14+.
 
-Uses literal string types to enforce typing at both runtime (via pydantic) and during static analysis.
+[![CI](https://github.com/zvsdev/uplid/actions/workflows/ci.yml/badge.svg)](https://github.com/zvsdev/uplid/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/uplid)](https://pypi.org/project/uplid/)
+[![Python](https://img.shields.io/pypi/pyversions/uplid)](https://pypi.org/project/uplid/)
 
-UIDs underneath are KSUIDs allowing them to be sorted by time of creation while still being collision resistant.
+## Features
 
-String representations are encoded with base62 keeping them url safe and human friendly.
-
-Python 3.9 or higher and at least pydantic 2.6 are required.
-
-Can be integrated with FastAPI.
+- **Type-safe prefixes**: `UPLID[Literal["usr"]]` prevents mixing user IDs with org IDs
+- **Human-readable**: `usr_4mJ9k2L8nP3qR7sT1vW5xY` (Stripe-style)
+- **Time-sortable**: Built on UUIDv7 for natural ordering
+- **Compact**: 22-character base62 encoding
+- **Zero external deps**: Uses Python 3.14's stdlib `uuid7()`
+- **Pydantic 2 native**: Full validation and serialization support
 
 ## Installation
 
-```
+```bash
 pip install uplid
+# or
+uv add uplid
 ```
 
-## Usage
+Requires Python 3.14+.
 
-### With Pydantic
+## Quick Start
 
-```py
-from uplid import UPLID, factory
+```python
+from typing import Literal
 from pydantic import BaseModel, Field
+from uplid import UPLID, factory
 
+# Define typed ID aliases
 UserId = UPLID[Literal["usr"]]
-WorkspaceId = UPLID[Literal["wrkspace"]]
+OrgId = UPLID[Literal["org"]]
+
+# Use in Pydantic models
+class User(BaseModel):
+    id: UserId = Field(default_factory=factory(UserId))
+    org_id: OrgId
+
+# Generate IDs
+user_id = UPLID.generate("usr")
+print(user_id)  # usr_4mJ9k2L8nP3qR7sT1vW5xY
+
+# Parse from string
+parsed = UPLID.from_string("usr_4mJ9k2L8nP3qR7sT1vW5xY", "usr")
+
+# Type safety - these are compile-time errors with ty/mypy:
+# user.org_id = user_id  # Error: UserId != OrgId
+```
+
+## Prefix Rules
+
+Prefixes must be snake_case:
+- Lowercase letters and underscores only
+- Cannot start or end with underscore
+- Examples: `usr`, `api_key`, `org_member`
+
+## API Reference
+
+### `UPLID[PREFIX]`
+
+Generic class for prefixed IDs.
+
+```python
+# Generate new ID
+uid = UPLID.generate("usr")
+
+# Parse from string
+uid = UPLID.from_string("usr_abc123...", "usr")
+
+# Properties
+uid.prefix      # "usr"
+uid.uid         # UUID object
+uid.datetime    # datetime from UUIDv7
+uid.timestamp   # float (Unix timestamp)
+uid.base62_uid  # "abc123..." (22 chars)
+```
+
+### `factory(UPLIDType)`
+
+Creates a factory function for Pydantic's `default_factory`.
+
+```python
+UserId = UPLID[Literal["usr"]]
 
 class User(BaseModel):
-  id: UserId = Field(default_factory=factory(UserId))
-  workspace_id: WorkspaceId
-
-user = User(workspace_id = UPLID.generate("wrkspace))
-
-user_json = user.model_dump_json()
-
-restored_user = User.validate_json(user_json)
+    id: UserId = Field(default_factory=factory(UserId))
 ```
 
-### Standalone
+### `parse(UPLIDType)`
 
-```py
-from uplid import UPLID, validator, factory
+Creates a parser function that raises `UPLIDError` on invalid input.
+
+```python
+from uplid import UPLID, parse, UPLIDError
 
 UserId = UPLID[Literal["usr"]]
-WorkspaceId = UPLID[Literal["wrkspace"]]
+parse_user_id = parse(UserId)
 
-UserIdFactory = factory(UserId)
-WorkspaceIdFactory = factory(WorkspaceId)
-
-user_id = UserIdFactory()
-workspace_id = WorkspaceIdFactory()
-
-def foo(bar: UserId) -> None:
-  pass
-
-foo(bar=user_id) # passes static check
-foo(bar=workspace_id) # fails static check
-
-UserIdValidator = validator(UserId)
-
-UserIdValidator(str(workspace_id)) # fails runtime check
+try:
+    uid = parse_user_id("usr_abc123...")
+except UPLIDError as e:
+    print(e)
 ```
 
-### With FastAPI
+### `UPLIDType`
 
-#### As a Query or Path Param
+Protocol for generic functions accepting any UPLID:
 
-```py
-from uplid import UPLID, validator
-from fastapi import Request, Response, Depends
+```python
+from uplid import UPLIDType
 
-UserId = UPLID[Literal["usr]]
-
-async def endpoint(request: Request, user_id: UserId = Depends(validator(UserId))) -> Response:
-  ...
+def log_entity(id: UPLIDType) -> None:
+    print(f"{id.prefix} created at {id.datetime}")
 ```
 
-FastAPI depends does not convert pydantic's ValidationError to RequestValidationError if thrown inside of Depends.
-As a workaround, you can add a global catch at the top level, or wrap your own handler around the UPLID validator.
+### `UPLIDError`
 
-```py
-from fastapi import Request, FastAPI
-from fastapi.exceptions import RequestValidationError
-from pydantic import ValidationError
+Exception raised for invalid IDs. Subclasses `ValueError`.
 
-def handle_validation_error(request: Request, exc: Exception):
-  if isinstance(exc, ValidationError):
-    raise RequestValidationError(errors=exc.errors())
-  raise exc
+```python
+from uplid import UPLIDError
 
-app = FastAPI()
-app.add_exception_handler(ValidationError, handle_validation_error)
+try:
+    UPLID.from_string("invalid", "usr")
+except UPLIDError as e:
+    print(e)
+except ValueError:  # Also works
+    pass
 ```
 
-#### As part of a Body
+## License
 
-```py
-from uplid import UPLID
-from fastapi import Request, Response
-from pydantic import BaseModel
-
-class UserRequest(BaseModel):
-  user_id: UserId
-
-async def endpoint(request: Request, body: UserRequest) -> Response:
-  ...
-```
-
-## Inspirations
-
-- https://dev.to/stripe/designing-apis-for-humans-object-ids-3o5a
-- https://pypi.org/project/django-charid-field/
-- https://pypi.org/project/django-prefix-id/
-- https://sudhir.io/uuids-ulids
+MIT

@@ -1,1 +1,24 @@
-__pycache__
+__pycache__/
+*.pyc
+.worktrees/
+
+# Virtual environments
+.venv/
+
+# Build artifacts
+dist/
+*.egg-info/
+
+# Testing
+.hypothesis/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+
+# uv lock file (not needed for libraries)
+uv.lock
+

@@ -2,49 +2,43 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    types:
-      - opened
-      - synchronize
+    branches: [main]
+  workflow_call:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  ci:
+  check:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version:
-          - "3.9"
-          - "3.10"
-          - "3.11"
-          - "3.12"
+    timeout-minutes: 1
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: ${{ matrix.python-version }}
-      - uses: actions/cache@v3
-        id: cache
-        with:
-          path: ${{ env.pythonLocation }}
-          key: ${{ runner.os }}-python-${{ env.pythonLocation }}-${{ hashFiles('pyproject.toml') }}-root-v2
-      - name: Install poetry
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install "poetry"
-          python -m poetry self add poetry-version-plugin
-      - name: Configure poetry
-        run: python -m poetry config virtualenvs.create false
-      - name: Install Dependencies
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: python -m poetry install
+          enable-cache: true
+
+      - name: Set up Python 3.14
+        run: uv python install 3.14
+
+      - name: Install dependencies
+        run: uv sync
+
       - name: Lint
-        run: python -m poetry run bash scripts/lint.sh
+        run: uv run ruff check --output-format=github
+
+      - name: Format check
+        run: uv run ruff format --check
+
+      - name: Type check
+        run: |
+          uv run ty check src
+          uv run ty check tests --ignore unsupported-operator
+
       - name: Test
-        run: python -m poetry run bash scripts/test.sh
-        env:
-          COVERAGE_FILE: coverage/.coverage.${{ runner.os }}-py${{ matrix.python-version }}
-          CONTEXT: ${{ runner.os }}-py${{ matrix.python-version }}
+        run: uv run pytest --tb=short
