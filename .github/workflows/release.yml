@@ -4,12 +4,16 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  release:
+  check-version:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      id-token: write
+    outputs:
+      changed: ${{ steps.version.outputs.changed }}
+      version: ${{ steps.version.outputs.current }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -18,10 +22,10 @@ jobs:
       - name: Check for version bump
         id: version
         run: |
-          CURRENT=$(grep -Po '(?<=^version = ")[^"]+' pyproject.toml)
+          CURRENT=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
           echo "current=$CURRENT" >> $GITHUB_OUTPUT
 
-          PREVIOUS=$(git show HEAD^:pyproject.toml | grep -Po '(?<=^version = ")[^"]+' || echo "")
+          PREVIOUS=$(git show HEAD^:pyproject.toml | python -c "import sys, tomllib; print(tomllib.load(sys.stdin.buffer)['project']['version'])" 2>/dev/null || echo "")
           echo "previous=$PREVIOUS" >> $GITHUB_OUTPUT
 
           if [ "$CURRENT" != "$PREVIOUS" ]; then
@@ -32,21 +36,45 @@ jobs:
             echo "Version unchanged: $CURRENT"
           fi
 
-      - name: Create release tag
-        if: steps.version.outputs.changed == 'true'
-        run: |
-          VERSION="v${{ steps.version.outputs.current }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "$VERSION" -m "Release $VERSION"
-          git push origin "$VERSION"
+  ci:
+    needs: check-version
+    if: needs.check-version.outputs.changed == 'true'
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: [check-version, ci]
+    if: needs.check-version.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Install uv
-        if: steps.version.outputs.changed == 'true'
         uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
 
-      - name: Build and publish
-        if: steps.version.outputs.changed == 'true'
+      - name: Build
+        run: uv build
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*
+
+      - name: Publish to PyPI
+        run: uv publish --trusted-publishing always
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check-version.outputs.version }}
         run: |
-          uv build
-          uv publish --trusted-publishing always
+          gh release create "v$VERSION" dist/* \
+            --title "v$VERSION" \
+            --generate-notes
