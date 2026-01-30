@@ -6,11 +6,16 @@ authors = [{ name = "ZVS", email = "zvs@daswolf.dev" }]
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.14"
+keywords = ["uuid", "id", "identifier", "pydantic", "type-safe", "uuid7"]
 dependencies = ["pydantic>=2.10"]
 classifiers = [
+    "Development Status :: 5 - Production/Stable",
     "Framework :: Pydantic :: 2",
-    "Typing :: Typed",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
 ]
 
 [project.urls]

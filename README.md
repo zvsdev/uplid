@@ -68,7 +68,6 @@ Generic class for prefixed IDs.
 ```python
 # Generate new ID
 uid = UPLID.generate("usr")
-uid = UPLID.generate("usr", at=datetime.now())  # Custom timestamp
 
 # Parse from string
 uid = UPLID.from_string("usr_abc123...", "usr")
@@ -92,18 +91,20 @@ class User(BaseModel):
     id: UserId = Field(default_factory=factory(UserId))
 ```
 
-### `validator(UPLIDType)`
+### `parse(UPLIDType)`
 
-Creates a validator function that raises `ValidationError`.
+Creates a parser function that raises `UPLIDError` on invalid input.
 
 ```python
+from uplid import UPLID, parse, UPLIDError
+
 UserId = UPLID[Literal["usr"]]
-validate = validator(UserId)
+parse_user_id = parse(UserId)
 
 try:
-    uid = validate("invalid")
-except ValidationError as e:
-    print(e)  # Structured Pydantic error
+    uid = parse_user_id("usr_abc123...")
+except UPLIDError as e:
+    print(e)
 ```
 
 ### `UPLIDType`
