@@ -17,8 +17,7 @@ from typing import (
 )
 from uuid import UUID, uuid7
 
-from pydantic import ValidationError
-from pydantic_core import CoreSchema, PydanticCustomError, core_schema
+from pydantic_core import CoreSchema, core_schema
 
 
 if TYPE_CHECKING:
@@ -31,6 +30,7 @@ if TYPE_CHECKING:
 # =============================================================================
 
 # Base62 encoding: 0-9, A-Z, a-z (62 characters)
+# IMPORTANT: '0' must be first character for zfill padding to work correctly
 _BASE62_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 _BASE62_DECODE_MAP = {c: i for i, c in enumerate(_BASE62_ALPHABET)}
 
@@ -40,12 +40,15 @@ _BASE62_UUID_LENGTH = 22
 # UUIDv7 timestamp extraction (RFC 9562):
 # Bits 0-47 contain 48-bit Unix timestamp in milliseconds
 _UUIDV7_TIMESTAMP_SHIFT = 80  # 128 - 48 = shift to extract timestamp
+_MS_PER_SECOND = 1000
 
 # Prefix validation: snake_case (lowercase letters and single underscores)
 # - Must start and end with a letter
 # - Cannot have consecutive underscores
 # - Single character prefixes are allowed
+# - Maximum 64 characters to prevent DoS via regex on huge inputs
 _PREFIX_PATTERN = re.compile(r"^[a-z]([a-z]*(_[a-z]+)*)?$")
+_PREFIX_MAX_LENGTH = 64
 
 
 # =============================================================================
@@ -70,6 +73,8 @@ class UPLIDType(Protocol):
         def log_entity(entity_id: UPLIDType) -> None:
             print(f"{entity_id.prefix} created at {entity_id.datetime}")
     """
+
+    __slots__ = ()
 
     @property
     def prefix(self) -> str:
@@ -120,7 +125,14 @@ def _int_to_base62(num: int) -> str:
 
 
 def _base62_to_int(s: str) -> int:
-    """Convert base62 string to integer."""
+    """Convert base62 string to integer.
+
+    Raises:
+        ValueError: If input exceeds expected UUID length.
+        KeyError: If input contains invalid base62 characters.
+    """
+    if len(s) > _BASE62_UUID_LENGTH:
+        raise ValueError(f"Input exceeds maximum length of {_BASE62_UUID_LENGTH}")
     result = 0
     for char in s:
         result = result * 62 + _BASE62_DECODE_MAP[char]
@@ -138,6 +150,10 @@ def _validate_prefix(prefix: str) -> None:
     Raises:
         UPLIDError: If prefix is invalid.
     """
+    if len(prefix) > _PREFIX_MAX_LENGTH:
+        raise UPLIDError(
+            f"Prefix must be at most {_PREFIX_MAX_LENGTH} characters, got {len(prefix)}"
+        )
     if not _PREFIX_PATTERN.match(prefix):
         raise UPLIDError(
             f"Prefix must be snake_case (lowercase letters, single underscores, "
@@ -167,19 +183,17 @@ class UPLID[PREFIX: LiteralString]:
 
     __slots__ = ("_base62_uid", "_prefix", "_uid")
 
-    def __init__(self, prefix: PREFIX, uid: UUID, *, _skip_validation: bool = False) -> None:
+    def __init__(self, prefix: PREFIX, uid: UUID) -> None:
         """Initialize a UPLID with a prefix and UUID.
 
         Args:
             prefix: The string prefix (must be snake_case).
             uid: The UUID (should be UUIDv7 for datetime/timestamp to be meaningful).
-            _skip_validation: Internal flag to skip validation (for from_string).
 
         Raises:
             UPLIDError: If prefix is not valid snake_case.
         """
-        if not _skip_validation:
-            _validate_prefix(prefix)
+        _validate_prefix(prefix)
         self._prefix = prefix
         self._uid = uid
         self._base62_uid: str | None = None
@@ -210,7 +224,7 @@ class UPLID[PREFIX: LiteralString]:
             the returned datetime will be meaningless.
         """
         ms = self._uid.int >> _UUIDV7_TIMESTAMP_SHIFT
-        return dt_datetime.fromtimestamp(ms / 1000, tz=UTC)
+        return dt_datetime.fromtimestamp(ms / _MS_PER_SECOND, tz=UTC)
 
     @property
     def timestamp(self) -> float:
@@ -221,7 +235,7 @@ class UPLID[PREFIX: LiteralString]:
             the returned timestamp will be meaningless.
         """
         ms = self._uid.int >> _UUIDV7_TIMESTAMP_SHIFT
-        return ms / 1000
+        return ms / _MS_PER_SECOND
 
     def __str__(self) -> str:
         """Return the string representation as '<prefix>_<base62uid>'."""
@@ -266,16 +280,16 @@ class UPLID[PREFIX: LiteralString]:
         return NotImplemented
 
     def __copy__(self) -> Self:
-        """Return a shallow copy (UPLIDs are effectively immutable)."""
-        new = object.__new__(type(self))
-        new._prefix = self._prefix  # noqa: SLF001
-        new._uid = self._uid  # noqa: SLF001
-        new._base62_uid = self._base62_uid  # noqa: SLF001
-        return new
+        """Return self (UPLIDs are immutable)."""
+        return self
 
     def __deepcopy__(self, memo: dict[int, Any]) -> Self:
-        """Return a deep copy (same as shallow for immutable UPLIDs)."""
-        return self.__copy__()
+        """Return self (UPLIDs are immutable)."""
+        return self
+
+    def __reduce__(self) -> tuple[type[Self], tuple[str, UUID]]:
+        """Support pickling for multiprocessing, caching, etc."""
+        return (type(self), (self._prefix, self._uid))
 
     @classmethod
     def generate(cls, prefix: PREFIX) -> Self:
@@ -386,8 +400,8 @@ class UPLID[PREFIX: LiteralString]:
             if isinstance(v, str):
                 return cls.from_string(v, prefix_str)
             if isinstance(v, UPLID):
-                if v._prefix != prefix_str:  # noqa: SLF001
-                    raise UPLIDError(f"Expected prefix {prefix_str!r}, got {v._prefix!r}")  # noqa: SLF001
+                if v.prefix != prefix_str:
+                    raise UPLIDError(f"Expected prefix {prefix_str!r}, got {v.prefix!r}")
                 return v
             raise UPLIDError(f"Expected UPLID or str, got {type(v).__name__}")
 
@@ -464,34 +478,3 @@ def parse[PREFIX: LiteralString](
         return UPLID.from_string(v, prefix)
 
     return _parse
-
-
-# Backwards compatibility alias (deprecated)
-def validator[PREFIX: LiteralString](
-    uplid_type: type[UPLID[PREFIX]],
-) -> Callable[[str], UPLID[PREFIX]]:
-    """Deprecated: Use parse() instead.
-
-    Creates a parse function that raises ValidationError on failure.
-    This was confusingly named - it's not a Pydantic validator decorator.
-    """
-    prefix = _get_prefix(uplid_type)
-
-    def _validator(v: str) -> UPLID[PREFIX]:
-        try:
-            return UPLID.from_string(v, prefix)
-        except UPLIDError as e:
-            raise ValidationError.from_exception_data(
-                f"{prefix.replace('_', ' ').title().replace(' ', '')}Id",
-                [
-                    {
-                        "loc": (f"{prefix}_id",),
-                        "input": v,
-                        "type": PydanticCustomError(
-                            "uplid_error", "{error_message}", {"error_message": str(e)}
-                        ),
-                    }
-                ],
-            ) from e
-
-    return _validator

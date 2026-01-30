@@ -145,3 +145,62 @@ class TestUPLIDProperties:
         first = uid.base62_uid
         second = uid.base62_uid
         assert first is second  # Same object, not just equal
+
+
+class TestUPLIDPickle:
+    def test_pickle_roundtrip(self) -> None:
+        import pickle
+
+        from uplid import UPLID
+
+        original = UPLID.generate("usr")
+        pickled = pickle.dumps(original)
+        restored = pickle.loads(pickled)
+        assert original == restored
+        assert original.prefix == restored.prefix
+        assert original.uid == restored.uid
+
+    def test_pickle_with_underscore_prefix(self) -> None:
+        import pickle
+
+        from uplid import UPLID
+
+        original = UPLID.generate("api_key")
+        restored = pickle.loads(pickle.dumps(original))
+        assert original == restored
+
+
+class TestUPLIDCopy:
+    def test_copy_returns_self(self) -> None:
+        import copy
+
+        from uplid import UPLID
+
+        uid = UPLID.generate("usr")
+        copied = copy.copy(uid)
+        assert copied is uid  # Same object, not a copy
+
+    def test_deepcopy_returns_self(self) -> None:
+        import copy
+
+        from uplid import UPLID
+
+        uid = UPLID.generate("usr")
+        copied = copy.deepcopy(uid)
+        assert copied is uid  # Same object, not a copy
+
+
+class TestUPLIDPrefixLimits:
+    def test_rejects_prefix_exceeding_max_length(self) -> None:
+        from uplid import UPLID, UPLIDError
+
+        long_prefix = "a" * 65  # 65 > 64 max
+        with pytest.raises(UPLIDError, match="at most 64 characters"):
+            UPLID.generate(long_prefix)
+
+    def test_accepts_prefix_at_max_length(self) -> None:
+        from uplid import UPLID
+
+        max_prefix = "a" * 64
+        uid = UPLID.generate(max_prefix)
+        assert uid.prefix == max_prefix
