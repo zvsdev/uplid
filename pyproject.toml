@@ -1,69 +1,65 @@
-[tool.poetry]
+[project]
 name = "uplid"
-version = "0.0.4"
-description = "Universal Prefixed Literal Ids, runtime/statically typed via pydanitc, designed for humans"
-authors = ["ZVS <zvs@daswolf.dev>"]
+version = "1.0.0"
+description = "Universal Prefixed Literal IDs - type-safe, human-readable identifiers"
+authors = [{ name = "ZVS", email = "zvs@daswolf.dev" }]
 readme = "README.md"
-homepage = "https://github.com/zvsdev/uplid"
-documentation = "https://github.com/zvsdev/uplid"
-repository = "https://github.com/zvsdev/uplid"
 license = "MIT"
+requires-python = ">=3.14"
+dependencies = ["pydantic>=2.10"]
 classifiers = [
-    "Framework :: Pydantic",
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
+    "Framework :: Pydantic :: 2",
     "Typing :: Typed",
+    "Programming Language :: Python :: 3.14",
 ]
 
-[tool.poetry.dependencies]
-python = "^3.9"
-pydantic = ">=2.6.0,<3.0.0"
-svix-ksuid = "0.6.2"
-
-[tool.poetry.group.dev.dependencies]
-pytest = "8.0.1"
-mypy = "1.8.0"
-ruff = "0.2.2"
+[project.urls]
+Homepage = "https://github.com/zvsdev/uplid"
+Repository = "https://github.com/zvsdev/uplid"
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["uv_build>=0.9.28,<0.10"]
+build-backend = "uv_build"
 
-[tool.poetry-version-plugin]
-source = "init"
-
-
-[tool.mypy]
-strict = true
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2,<10",
+    "hypothesis>=6.151.4,<7",
+    "ty>=0.0.14,<0.1",
+    "ruff>=0.14.14,<0.15",
+]
 
 [tool.ruff]
-lint.select = [
-    "E",  # pycodestyle errors
-    "W",  # pycodestyle warnings
-    "F",  # pyflakes
-    "I",  # isort
-    "C",  # flake8-comprehensions
-    "B",  # flake8-bugbear
-    "UP", # pyupgrade
-]
-lint.ignore = [
-    "E501",  # line too long, handled by ruff
-]
 line-length = 100
-indent-width = 4
+target-version = "py314"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "B", "S", "A", "T20", "RET", "SLF", "SLOT", "TRY", "FBT",
+    "ANN", "TCH", "C4", "SIM", "ARG", "ERA", "PIE", "PERF", "FURB", "UP", "N", "Q", "RUF", "D",
+]
+ignore = ["D100", "D104", "D107", "ANN101", "ANN102", "TRY003"]
 
 [tool.ruff.lint.isort]
-known-third-party = ["pydantic", "ksuid"]
+known-first-party = ["uplid"]
+known-third-party = ["pydantic", "pydantic_core"]
+required-imports = ["from __future__ import annotations"]
+force-single-line = false
+lines-after-imports = 2
 
-[tool.ruff.lint.pyupgrade]
-# Preserve types, even if a file imports `from __future__ import annotations`.
-keep-runtime-typing = true
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "ANN", "D", "ARG001", "SLF001"]
 
 [tool.ruff.format]
 quote-style = "double"
-indent-style = "space"
+docstring-code-format = true
+
+[tool.ty.environment]
+python-version = "3.14"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
