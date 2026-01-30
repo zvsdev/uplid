@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check for version bump
+        id: version
+        run: |
+          CURRENT=$(grep -Po '(?<=^version = ")[^"]+' pyproject.toml)
+          echo "current=$CURRENT" >> $GITHUB_OUTPUT
+
+          PREVIOUS=$(git show HEAD^:pyproject.toml | grep -Po '(?<=^version = ")[^"]+' || echo "")
+          echo "previous=$PREVIOUS" >> $GITHUB_OUTPUT
+
+          if [ "$CURRENT" != "$PREVIOUS" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Version bumped: $PREVIOUS -> $CURRENT"
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "Version unchanged: $CURRENT"
+          fi
+
+      - name: Create release tag
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          VERSION="v${{ steps.version.outputs.current }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "$VERSION"
+
+      - name: Install uv
+        if: steps.version.outputs.changed == 'true'
+        uses: astral-sh/setup-uv@v5
+
+      - name: Build and publish
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          uv build
+          uv publish --trusted-publishing always
