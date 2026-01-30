@@ -74,8 +74,10 @@ class TestRoundtripInvariants:
         """Base62 UID should have expected properties."""
         uid = UPLID.generate(prefix)
         assert len(uid.base62_uid) == 22
-        assert all(c in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-                   for c in uid.base62_uid)
+        assert all(
+            c in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+            for c in uid.base62_uid
+        )
 
     @given(prefix_strategy, base62_uid_strategy)
     @settings(max_examples=100)

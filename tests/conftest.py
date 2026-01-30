@@ -11,9 +11,7 @@ prefix_strategy = st.from_regex(r"[a-z]([a-z_]*[a-z])?", fullmatch=True).filter(
 )
 
 # Strategy for valid base62 characters
-base62_strategy = st.sampled_from(
-    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-)
+base62_strategy = st.sampled_from("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
 
 # Strategy for valid 22-char base62 UIDs
 base62_uid_strategy = st.text(base62_strategy, min_size=22, max_size=22)
