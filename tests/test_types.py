@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from uplid import UPLID, UPLIDError, UPLIDType
+from typing import Literal
+
+from uplid import UPLID, UPLIDError, UPLIDType, factory
+
+
+UserId = UPLID[Literal["usr"]]
+ApiKeyId = UPLID[Literal["api_key"]]
+UserIdFactory = factory(UserId)
+ApiKeyIdFactory = factory(ApiKeyId)
 
 
 class TestUPLIDError:
@@ -29,14 +37,14 @@ class TestUPLIDTypeProtocol:
 
 class TestUPLIDConformsToProtocol:
     def test_uplid_instance_matches_protocol(self) -> None:
-        uid = UPLID.generate("usr")
+        uid = UserIdFactory()
         assert isinstance(uid, UPLIDType)
 
     def test_protocol_allows_generic_functions(self) -> None:
         def get_datetime(uplid: UPLIDType) -> float:
             return uplid.datetime.timestamp()
 
-        uid = UPLID.generate("usr")
+        uid = UserIdFactory()
         ts = get_datetime(uid)
         assert ts > 0
 
@@ -44,8 +52,8 @@ class TestUPLIDConformsToProtocol:
         def format_id(uplid: UPLIDType) -> str:
             return f"[{uplid.prefix}] {uplid.datetime.isoformat()}"
 
-        usr_id = UPLID.generate("usr")
-        api_id = UPLID.generate("api_key")
+        usr_id = UserIdFactory()
+        api_id = ApiKeyIdFactory()
 
         assert "[usr]" in format_id(usr_id)
         assert "[api_key]" in format_id(api_id)

@@ -9,9 +9,17 @@ from uuid import UUID, uuid7
 import pytest
 from hypothesis import given, settings
 
-from uplid import UPLID, UPLIDError, parse
+from uplid import UPLID, UPLIDError, factory, parse
 
 from .conftest import prefix_strategy
+
+
+UserId = UPLID[Literal["usr"]]
+OrgId = UPLID[Literal["org"]]
+ApiKeyId = UPLID[Literal["api_key"]]
+UserIdFactory = factory(UserId)
+OrgIdFactory = factory(OrgId)
+ApiKeyIdFactory = factory(ApiKeyId)
 
 
 class TestUPLIDGeneration:

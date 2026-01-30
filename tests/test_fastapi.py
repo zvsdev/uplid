@@ -12,8 +12,24 @@ from uplid import UPLID, UPLIDError, factory, parse
 UserId = UPLID[Literal["usr"]]
 OrgId = UPLID[Literal["org"]]
 UserIdFactory = factory(UserId)
+OrgIdFactory = factory(OrgId)
 parse_user_id = parse(UserId)
 parse_org_id = parse(OrgId)
+
+
+# FastAPI validators - parameter names must match route parameters
+def validate_user_id(user_id: str) -> UserId:
+    try:
+        return parse_user_id(user_id)
+    except UPLIDError as e:
+        raise HTTPException(422, f"Invalid user ID: {e}") from None
+
+
+def validate_org_id(org_id: str) -> OrgId:
+    try:
+        return parse_org_id(org_id)
+    except UPLIDError as e:
+        raise HTTPException(422, f"Invalid org ID: {e}") from None
 
 
 class User(BaseModel):
@@ -26,36 +42,16 @@ app = FastAPI()
 users: dict[str, User] = {}
 
 
-# Dependency for validating path/query params
-def get_user_id(user_id: str) -> UserId:
-    try:
-        return parse_user_id(user_id)
-    except UPLIDError as e:
-        raise HTTPException(422, f"Invalid user ID: {e}") from None
-
-
-def get_org_id(org_id: str) -> OrgId:
-    try:
-        return parse_org_id(org_id)
-    except UPLIDError as e:
-        raise HTTPException(422, f"Invalid org ID: {e}") from None
-
-
 @app.post("/users")
 def create_user(name: str, org_id: str | None = None) -> User:
-    parsed_org_id = None
-    if org_id:
-        try:
-            parsed_org_id = parse_org_id(org_id)
-        except UPLIDError as e:
-            raise HTTPException(422, f"Invalid org ID: {e}") from None
+    parsed_org_id = validate_org_id(org_id) if org_id else None
     user = User(name=name, org_id=parsed_org_id)
     users[str(user.id)] = user
     return user
 
 
 @app.get("/users/{user_id}")
-def get_user(user_id: Annotated[UserId, Depends(get_user_id)]) -> User:
+def get_user(user_id: Annotated[UserId, Depends(validate_user_id)]) -> User:
     if str(user_id) not in users:
         raise HTTPException(404, "User not found")
     return users[str(user_id)]
@@ -65,17 +61,13 @@ def get_user(user_id: Annotated[UserId, Depends(get_user_id)]) -> User:
 def list_users(org_id: Annotated[str | None, Query()] = None) -> list[User]:
     if org_id is None:
         return list(users.values())
-    try:
-        parsed_org_id = parse_org_id(org_id)
-    except UPLIDError as e:
-        raise HTTPException(422, f"Invalid org ID: {e}") from None
+    parsed_org_id = validate_org_id(org_id)
     return [u for u in users.values() if u.org_id == parsed_org_id]
 
 
-# Endpoint that accepts User model as JSON body
 @app.put("/users/{user_id}")
 def update_user(
-    user_id: Annotated[UserId, Depends(get_user_id)],
+    user_id: Annotated[UserId, Depends(validate_user_id)],
     user: User,
 ) -> User:
     """Update user - validates UPLID in JSON body."""
@@ -85,7 +77,6 @@ def update_user(
     return user
 
 
-# Endpoint that creates user from full JSON body
 @app.post("/users/from-json")
 def create_user_from_json(user: User) -> User:
     """Create user from JSON body - UPLID validated by Pydantic."""
@@ -93,17 +84,14 @@ def create_user_from_json(user: User) -> User:
     return user
 
 
-# Header validation dependency
-def get_user_id_from_header(x_user_id: Annotated[str, Header()]) -> UserId:
-    try:
-        return parse_user_id(x_user_id)
-    except UPLIDError as e:
-        raise HTTPException(422, f"Invalid X-User-Id header: {e}") from None
+# Header validation - wraps validator with Header extraction
+def validate_user_id_header(x_user_id: Annotated[str, Header()]) -> UserId:
+    return validate_user_id(x_user_id)
 
 
 @app.get("/me")
 def get_current_user(
-    user_id: Annotated[UserId, Depends(get_user_id_from_header)],
+    user_id: Annotated[UserId, Depends(validate_user_id_header)],
 ) -> User:
     """Get user from X-User-Id header."""
     if str(user_id) not in users:
@@ -111,17 +99,14 @@ def get_current_user(
     return users[str(user_id)]
 
 
-# Cookie validation dependency
-def get_session_user(session_user_id: Annotated[str, Cookie()]) -> UserId:
-    try:
-        return parse_user_id(session_user_id)
-    except UPLIDError as e:
-        raise HTTPException(422, f"Invalid session cookie: {e}") from None
+# Cookie validation - wraps validator with Cookie extraction
+def validate_user_id_cookie(session_user_id: Annotated[str, Cookie()]) -> UserId:
+    return validate_user_id(session_user_id)
 
 
 @app.get("/session")
 def get_session(
-    user_id: Annotated[UserId, Depends(get_session_user)],
+    user_id: Annotated[UserId, Depends(validate_user_id_cookie)],
 ) -> User:
     """Get user from session_user_id cookie."""
     if str(user_id) not in users:
@@ -152,12 +137,12 @@ class TestFastAPIPathParams:
         assert response.status_code == 422
 
     def test_wrong_prefix_returns_422(self) -> None:
-        org_id = UPLID.generate("org")
+        org_id = OrgIdFactory()
         response = client.get(f"/users/{org_id}")
         assert response.status_code == 422
 
     def test_user_not_found_returns_404(self) -> None:
-        valid_but_nonexistent = UPLID.generate("usr")
+        valid_but_nonexistent = UserIdFactory()
         response = client.get(f"/users/{valid_but_nonexistent}")
         assert response.status_code == 404
 
@@ -167,8 +152,8 @@ class TestFastAPIQueryParams:
         users.clear()
 
     def test_filter_by_org_id(self) -> None:
-        org1 = UPLID.generate("org")
-        org2 = UPLID.generate("org")
+        org1 = OrgIdFactory()
+        org2 = OrgIdFactory()
 
         # Create users in different orgs
         client.post(f"/users?name=Alice&org_id={org1}")
@@ -234,8 +219,8 @@ class TestFastAPIJsonBody:
 
     def test_valid_uplid_in_json_body(self) -> None:
         """FastAPI validates UPLID in JSON body via Pydantic."""
-        user_id = UPLID.generate("usr")
-        org_id = UPLID.generate("org")
+        user_id = UserIdFactory()
+        org_id = OrgIdFactory()
 
         response = client.post(
             "/users/from-json",
@@ -261,7 +246,7 @@ class TestFastAPIJsonBody:
 
     def test_wrong_prefix_in_body_returns_422(self) -> None:
         """Wrong prefix (org instead of usr) in body is rejected."""
-        org_id = UPLID.generate("org")  # Wrong prefix for UserId field
+        org_id = OrgIdFactory()  # Wrong prefix for UserId field
 
         response = client.post(
             "/users/from-json",
@@ -272,8 +257,8 @@ class TestFastAPIJsonBody:
 
     def test_wrong_org_prefix_in_body_returns_422(self) -> None:
         """Wrong prefix for org_id field is rejected."""
-        user_id = UPLID.generate("usr")
-        another_user_id = UPLID.generate("usr")  # Wrong prefix for OrgId field
+        user_id = UserIdFactory()
+        another_user_id = UserIdFactory()  # Wrong prefix for OrgId field
 
         response = client.post(
             "/users/from-json",
@@ -284,7 +269,7 @@ class TestFastAPIJsonBody:
 
     def test_update_with_matching_ids(self) -> None:
         """PUT with matching path and body IDs succeeds."""
-        user_id = UPLID.generate("usr")
+        user_id = UserIdFactory()
 
         response = client.put(
             f"/users/{user_id}",
@@ -296,8 +281,8 @@ class TestFastAPIJsonBody:
 
     def test_update_with_mismatched_ids_returns_400(self) -> None:
         """PUT with different path and body IDs fails."""
-        user_id1 = UPLID.generate("usr")
-        user_id2 = UPLID.generate("usr")
+        user_id1 = UserIdFactory()
+        user_id2 = UserIdFactory()
 
         response = client.put(
             f"/users/{user_id1}",
@@ -312,7 +297,7 @@ class TestPydanticSerialization:
 
     def test_model_dump_json_and_validate_json_roundtrip(self) -> None:
         """User model roundtrips through JSON."""
-        original = User(name="Alice", org_id=UPLID.generate("org"))
+        original = User(name="Alice", org_id=OrgIdFactory())
 
         # Serialize to JSON string
         json_str = original.model_dump_json()
@@ -334,8 +319,8 @@ class TestPydanticSerialization:
 
     def test_model_validate_from_dict_with_string_ids(self) -> None:
         """model_validate() accepts string IDs."""
-        user_id = UPLID.generate("usr")
-        org_id = UPLID.generate("org")
+        user_id = UserIdFactory()
+        org_id = OrgIdFactory()
 
         user = User.model_validate(
             {
@@ -350,8 +335,8 @@ class TestPydanticSerialization:
 
     def test_model_validate_from_dict_with_uplid_objects(self) -> None:
         """model_validate() also accepts UPLID objects directly."""
-        user_id = UPLID.generate("usr")
-        org_id = UPLID.generate("org")
+        user_id = UserIdFactory()
+        org_id = OrgIdFactory()
 
         user = User.model_validate(
             {
@@ -400,7 +385,7 @@ class TestFastAPIHeaders:
 
     def test_wrong_prefix_in_header_returns_422(self) -> None:
         """Wrong prefix in header is rejected."""
-        org_id = UPLID.generate("org")
+        org_id = OrgIdFactory()
         response = client.get("/me", headers={"X-User-Id": str(org_id)})
         assert response.status_code == 422
 
@@ -411,7 +396,7 @@ class TestFastAPIHeaders:
 
     def test_user_not_found_via_header_returns_404(self) -> None:
         """Valid UPLID but non-existent user returns 404."""
-        valid_but_nonexistent = UPLID.generate("usr")
+        valid_but_nonexistent = UserIdFactory()
         response = client.get("/me", headers={"X-User-Id": str(valid_but_nonexistent)})
         assert response.status_code == 404
 
@@ -440,7 +425,7 @@ class TestFastAPICookies:
 
     def test_wrong_prefix_in_cookie_returns_422(self) -> None:
         """Wrong prefix in cookie is rejected."""
-        org_id = UPLID.generate("org")
+        org_id = OrgIdFactory()
         response = client.get("/session", cookies={"session_user_id": str(org_id)})
         assert response.status_code == 422
 
@@ -451,6 +436,6 @@ class TestFastAPICookies:
 
     def test_user_not_found_via_cookie_returns_404(self) -> None:
         """Valid UPLID but non-existent user returns 404."""
-        valid_but_nonexistent = UPLID.generate("usr")
+        valid_but_nonexistent = UserIdFactory()
         response = client.get("/session", cookies={"session_user_id": str(valid_but_nonexistent)})
         assert response.status_code == 404

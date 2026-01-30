@@ -32,7 +32,7 @@ class TestSQLAlchemyStorage:
         Base.metadata.create_all(self.engine)
 
     def test_store_and_retrieve_uplid(self) -> None:
-        user_id = UPLID.generate("usr")
+        user_id = UserIdFactory()
 
         with Session(self.engine) as session:
             user = UserRow(id=str(user_id), name="Alice")
@@ -45,7 +45,7 @@ class TestSQLAlchemyStorage:
             assert row.name == "Alice"
 
     def test_parse_retrieved_id(self) -> None:
-        user_id = UPLID.generate("usr")
+        user_id = UserIdFactory()
 
         with Session(self.engine) as session:
             session.add(UserRow(id=str(user_id), name="Bob"))
@@ -59,7 +59,7 @@ class TestSQLAlchemyStorage:
             assert parsed.datetime == user_id.datetime
 
     def test_query_by_id(self) -> None:
-        user_id = UPLID.generate("usr")
+        user_id = UserIdFactory()
 
         with Session(self.engine) as session:
             session.add(UserRow(id=str(user_id), name="Charlie"))
@@ -70,9 +70,9 @@ class TestSQLAlchemyStorage:
             assert row.name == "Charlie"
 
     def test_multiple_users_with_org(self) -> None:
-        org_id = UPLID.generate("org")
-        user1_id = UPLID.generate("usr")
-        user2_id = UPLID.generate("usr")
+        org_id = OrgIdFactory()
+        user1_id = UserIdFactory()
+        user2_id = UserIdFactory()
 
         with Session(self.engine) as session:
             session.add(UserRow(id=str(user1_id), name="Alice", org_id=str(org_id)))
@@ -90,7 +90,7 @@ class TestSQLAlchemyStorage:
 
     def test_id_ordering_matches_creation_order(self) -> None:
         # UUIDv7 IDs should sort chronologically
-        ids = [UPLID.generate("usr") for _ in range(5)]
+        ids = [UserIdFactory() for _ in range(5)]
 
         with Session(self.engine) as session:
             for i, uid in enumerate(ids):
@@ -126,7 +126,7 @@ class TestSQLAlchemyTransactions:
         Base.metadata.create_all(self.engine)
 
     def test_rollback_does_not_persist(self) -> None:
-        user_id = UPLID.generate("usr")
+        user_id = UserIdFactory()
 
         with Session(self.engine) as session:
             session.add(UserRow(id=str(user_id), name="Rollback"))
@@ -137,7 +137,7 @@ class TestSQLAlchemyTransactions:
             assert len(count) == 0
 
     def test_unique_constraint_on_duplicate_id(self) -> None:
-        user_id = UPLID.generate("usr")
+        user_id = UserIdFactory()
 
         with Session(self.engine) as session:
             session.add(UserRow(id=str(user_id), name="First"))
