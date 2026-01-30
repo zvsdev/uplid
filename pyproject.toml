@@ -52,7 +52,7 @@ lines-after-imports = 2
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101", "S301", "ANN", "D", "ARG001", "SLF001"]
+"tests/**/*.py" = ["S101", "S301", "ANN", "D", "ARG001", "SLF001", "N806"]
 
 [tool.ruff.format]
 quote-style = "double"
