@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 from datetime import UTC
 from datetime import datetime as dt_datetime
@@ -27,16 +26,50 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-PREFIX_PATTERN = re.compile(r"^[a-z]([a-z_]*[a-z])?$")
+# =============================================================================
+# Constants
+# =============================================================================
+
+# Base62 encoding: 0-9, A-Z, a-z (62 characters)
+_BASE62_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+_BASE62_DECODE_MAP = {c: i for i, c in enumerate(_BASE62_ALPHABET)}
+
+# A 128-bit UUID requires ceiling(128 / log2(62)) = 22 base62 characters
+_BASE62_UUID_LENGTH = 22
+
+# UUIDv7 timestamp extraction (RFC 9562):
+# Bits 0-47 contain 48-bit Unix timestamp in milliseconds
+_UUIDV7_TIMESTAMP_SHIFT = 80  # 128 - 48 = shift to extract timestamp
+
+# Prefix validation: snake_case (lowercase letters and single underscores)
+# - Must start and end with a letter
+# - Cannot have consecutive underscores
+# - Single character prefixes are allowed
+_PREFIX_PATTERN = re.compile(r"^[a-z]([a-z]*(_[a-z]+)*)?$")
+
+
+# =============================================================================
+# Exceptions
+# =============================================================================
 
 
 class UPLIDError(ValueError):
     """Raised when UPLID parsing or validation fails."""
 
 
+# =============================================================================
+# Protocol
+# =============================================================================
+
+
 @runtime_checkable
 class UPLIDType(Protocol):
-    """Protocol for any UPLID, useful for generic function signatures."""
+    """Protocol for any UPLID, useful for generic function signatures.
+
+    Example:
+        def log_entity(entity_id: UPLIDType) -> None:
+            print(f"{entity_id.prefix} created at {entity_id.datetime}")
+    """
 
     @property
     def prefix(self) -> str:
@@ -53,34 +86,64 @@ class UPLIDType(Protocol):
         """The timestamp extracted from the UUIDv7."""
         ...
 
+    @property
+    def timestamp(self) -> float:
+        """The Unix timestamp (seconds) from the UUIDv7."""
+        ...
+
+    @property
+    def base62_uid(self) -> str:
+        """The base62-encoded UID (22 characters)."""
+        ...
+
     def __str__(self) -> str:
         """String representation as '<prefix>_<base62uid>'."""
         ...
 
 
-_BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-_BASE62_MAP = {c: i for i, c in enumerate(_BASE62)}
+# =============================================================================
+# Base62 Encoding
+# =============================================================================
 
 
 def _int_to_base62(num: int) -> str:
     """Convert integer to base62 string, padded to 22 chars for UUIDv7."""
     if num == 0:
-        return "0" * 22
+        return "0" * _BASE62_UUID_LENGTH
 
     result: list[str] = []
     while num > 0:
         num, remainder = divmod(num, 62)
-        result.append(_BASE62[remainder])
+        result.append(_BASE62_ALPHABET[remainder])
 
-    return "".join(reversed(result)).zfill(22)
+    return "".join(reversed(result)).zfill(_BASE62_UUID_LENGTH)
 
 
 def _base62_to_int(s: str) -> int:
     """Convert base62 string to integer."""
     result = 0
     for char in s:
-        result = result * 62 + _BASE62_MAP[char]
+        result = result * 62 + _BASE62_DECODE_MAP[char]
     return result
+
+
+# =============================================================================
+# UPLID Class
+# =============================================================================
+
+
+def _validate_prefix(prefix: str) -> None:
+    """Validate that prefix follows snake_case rules.
+
+    Raises:
+        UPLIDError: If prefix is invalid.
+    """
+    if not _PREFIX_PATTERN.match(prefix):
+        raise UPLIDError(
+            f"Prefix must be snake_case (lowercase letters, single underscores, "
+            f"cannot start/end with underscore or have consecutive underscores), "
+            f"got {prefix!r}"
+        )
 
 
 class UPLID[PREFIX: LiteralString]:
@@ -91,107 +154,169 @@ class UPLID[PREFIX: LiteralString]:
     type checking to prevent mixing IDs from different domains.
 
     Example:
+        >>> from typing import Literal
         >>> UserId = UPLID[Literal["usr"]]
         >>> user_id = UPLID.generate("usr")
-        >>> print(user_id)  # usr_4mJ9k2L8nP3qR7sT1vW5xY
+        >>> print(user_id)  # usr_1a2B3c4D5e6F7g8H9i0J1k
+
+    Note:
+        The `datetime` and `timestamp` properties assume the underlying UUID
+        is a valid UUIDv7. If you construct a UPLID with a non-UUIDv7 UUID
+        (e.g., UUIDv4), these properties will return meaningless values.
     """
 
-    __slots__ = ("_base62_uid", "prefix", "uid")
+    __slots__ = ("_base62_uid", "_prefix", "_uid")
 
-    prefix: PREFIX
-    uid: UUID
-    _base62_uid: str | None
+    def __init__(self, prefix: PREFIX, uid: UUID, *, _skip_validation: bool = False) -> None:
+        """Initialize a UPLID with a prefix and UUID.
 
-    def __init__(self, prefix: PREFIX, uid: UUID) -> None:
-        """Initialize a UPLID with a prefix and UUID."""
-        self.prefix = prefix
-        self.uid = uid
-        self._base62_uid = None
+        Args:
+            prefix: The string prefix (must be snake_case).
+            uid: The UUID (should be UUIDv7 for datetime/timestamp to be meaningful).
+            _skip_validation: Internal flag to skip validation (for from_string).
+
+        Raises:
+            UPLIDError: If prefix is not valid snake_case.
+        """
+        if not _skip_validation:
+            _validate_prefix(prefix)
+        self._prefix = prefix
+        self._uid = uid
+        self._base62_uid: str | None = None
+
+    @property
+    def prefix(self) -> PREFIX:
+        """The prefix identifier (e.g., 'usr', 'api_key')."""
+        return self._prefix
+
+    @property
+    def uid(self) -> UUID:
+        """The underlying UUID (typically UUIDv7)."""
+        return self._uid
 
     @property
     def base62_uid(self) -> str:
         """The base62-encoded UID (22 characters)."""
         if self._base62_uid is None:
-            self._base62_uid = _int_to_base62(self.uid.int)
+            self._base62_uid = _int_to_base62(self._uid.int)
         return self._base62_uid
 
     @property
     def datetime(self) -> dt_datetime:
-        """The timestamp extracted from the UUIDv7."""
-        ms = self.uid.int >> 80
+        """The timestamp extracted from the UUIDv7.
+
+        Note:
+            This assumes the UUID is a valid UUIDv7. For non-UUIDv7 UUIDs,
+            the returned datetime will be meaningless.
+        """
+        ms = self._uid.int >> _UUIDV7_TIMESTAMP_SHIFT
         return dt_datetime.fromtimestamp(ms / 1000, tz=UTC)
 
     @property
     def timestamp(self) -> float:
-        """The Unix timestamp (seconds) from the UUIDv7."""
-        ms = self.uid.int >> 80
+        """The Unix timestamp (seconds) from the UUIDv7.
+
+        Note:
+            This assumes the UUID is a valid UUIDv7. For non-UUIDv7 UUIDs,
+            the returned timestamp will be meaningless.
+        """
+        ms = self._uid.int >> _UUIDV7_TIMESTAMP_SHIFT
         return ms / 1000
 
     def __str__(self) -> str:
         """Return the string representation as '<prefix>_<base62uid>'."""
-        return f"{self.prefix}_{self.base62_uid}"
+        return f"{self._prefix}_{self.base62_uid}"
 
     def __repr__(self) -> str:
         """Return a detailed representation."""
-        return f"UPLID({self.prefix!r}, {self.base62_uid!r})"
+        return f"UPLID({self._prefix!r}, {self.base62_uid!r})"
 
     def __hash__(self) -> int:
         """Return hash for use in sets and dict keys."""
-        return hash((self.prefix, self.uid))
+        return hash((self._prefix, self._uid))
 
     def __eq__(self, other: object) -> bool:
         """Check equality with another UPLID."""
         if isinstance(other, UPLID):
-            return self.prefix == other.prefix and self.uid == other.uid
+            return self._prefix == other._prefix and self._uid == other._uid
         return NotImplemented
 
     def __lt__(self, other: object) -> bool:
         """Compare for sorting (by prefix, then by uid)."""
         if isinstance(other, UPLID):
-            return (self.prefix, self.uid) < (other.prefix, other.uid)
+            return (self._prefix, self._uid) < (other._prefix, other._uid)  # type: ignore[operator]
         return NotImplemented
 
     def __le__(self, other: object) -> bool:
         """Compare for sorting (by prefix, then by uid)."""
         if isinstance(other, UPLID):
-            return (self.prefix, self.uid) <= (other.prefix, other.uid)
+            return (self._prefix, self._uid) <= (other._prefix, other._uid)  # type: ignore[operator]
         return NotImplemented
 
     def __gt__(self, other: object) -> bool:
         """Compare for sorting (by prefix, then by uid)."""
         if isinstance(other, UPLID):
-            return (self.prefix, self.uid) > (other.prefix, other.uid)
+            return (self._prefix, self._uid) > (other._prefix, other._uid)  # type: ignore[operator]
         return NotImplemented
 
     def __ge__(self, other: object) -> bool:
         """Compare for sorting (by prefix, then by uid)."""
         if isinstance(other, UPLID):
-            return (self.prefix, self.uid) >= (other.prefix, other.uid)
+            return (self._prefix, self._uid) >= (other._prefix, other._uid)  # type: ignore[operator]
         return NotImplemented
 
+    def __copy__(self) -> Self:
+        """Return a shallow copy (UPLIDs are effectively immutable)."""
+        new = object.__new__(type(self))
+        new._prefix = self._prefix  # noqa: SLF001
+        new._uid = self._uid  # noqa: SLF001
+        new._base62_uid = self._base62_uid  # noqa: SLF001
+        return new
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> Self:
+        """Return a deep copy (same as shallow for immutable UPLIDs)."""
+        return self.__copy__()
+
     @classmethod
-    def generate(cls, prefix: PREFIX, at: dt_datetime | None = None) -> Self:
-        """Generate a new UPLID with the given prefix."""
-        if not PREFIX_PATTERN.match(prefix):
-            raise UPLIDError(
-                f"Prefix must be snake_case (lowercase letters, underscores, "
-                f"cannot start/end with underscore), got {prefix!r}"
-            )
+    def generate(cls, prefix: PREFIX) -> Self:
+        """Generate a new UPLID with the given prefix.
 
-        if at is not None:
-            ms = int(at.timestamp() * 1000)
-            rand_bits = int.from_bytes(os.urandom(10), "big")
-            uuid_int = (ms << 80) | (0x7 << 76) | (rand_bits & ((1 << 76) - 1))
-            uuid_int = (uuid_int & ~(0x3 << 62)) | (0x2 << 62)
-            uid = UUID(int=uuid_int)
-        else:
-            uid = uuid7()
+        Args:
+            prefix: The string prefix (must be snake_case: lowercase letters
+                and single underscores, cannot start/end with underscore).
 
-        return cls(prefix, uid)
+        Returns:
+            A new UPLID instance.
+
+        Raises:
+            UPLIDError: If the prefix is not valid snake_case.
+        """
+        _validate_prefix(prefix)
+        instance = cls.__new__(cls)
+        instance._prefix = prefix  # noqa: SLF001
+        instance._uid = uuid7()  # noqa: SLF001
+        instance._base62_uid = None  # noqa: SLF001
+        return instance
 
     @classmethod
     def from_string(cls, string: str, prefix: PREFIX) -> Self:
-        """Parse a UPLID from its string representation."""
+        """Parse a UPLID from its string representation.
+
+        Args:
+            string: The string to parse (format: '<prefix>_<base62uid>').
+            prefix: The expected prefix.
+
+        Returns:
+            A UPLID instance.
+
+        Raises:
+            UPLIDError: If the string format is invalid or prefix doesn't match.
+
+        Note:
+            This method does not validate that the decoded UUID is a valid
+            UUIDv7. The datetime/timestamp properties may return meaningless
+            values if the original ID was not created with a UUIDv7.
+        """
         if "_" not in string:
             raise UPLIDError(f"UPLID must be in format '<prefix>_<uid>', got {string!r}")
 
@@ -199,14 +324,16 @@ class UPLID[PREFIX: LiteralString]:
         parsed_prefix = string[:last_underscore]
         encoded_uid = string[last_underscore + 1 :]
 
-        if not PREFIX_PATTERN.match(parsed_prefix):
+        if not _PREFIX_PATTERN.match(parsed_prefix):
             raise UPLIDError(f"Prefix must be snake_case, got {parsed_prefix!r}")
 
         if parsed_prefix != prefix:
             raise UPLIDError(f"Expected prefix {prefix!r}, got {parsed_prefix!r}")
 
-        if len(encoded_uid) != 22:
-            raise UPLIDError(f"UID must be 22 characters, got {len(encoded_uid)}")
+        if len(encoded_uid) != _BASE62_UUID_LENGTH:
+            raise UPLIDError(
+                f"UID must be {_BASE62_UUID_LENGTH} characters, got {len(encoded_uid)}"
+            )
 
         try:
             uid_int = _base62_to_int(encoded_uid)
@@ -214,8 +341,10 @@ class UPLID[PREFIX: LiteralString]:
         except (KeyError, ValueError) as e:
             raise UPLIDError(f"Invalid base62 UID: {encoded_uid!r}") from e
 
-        instance = cls(prefix, uid)
-        instance._base62_uid = encoded_uid
+        instance = cls.__new__(cls)
+        instance._prefix = prefix  # noqa: SLF001
+        instance._uid = uid  # noqa: SLF001
+        instance._base62_uid = encoded_uid  # noqa: SLF001
         return instance
 
     @classmethod
@@ -224,7 +353,13 @@ class UPLID[PREFIX: LiteralString]:
         source_type: Any,  # noqa: ANN401
         handler: Any,  # noqa: ANN401
     ) -> CoreSchema:
-        """Pydantic integration for validation and serialization."""
+        """Pydantic integration for validation and serialization.
+
+        Note:
+            This method accesses typing internals (__args__, __value__) which
+            may change between Python versions. Integration tests should verify
+            compatibility with supported Python versions.
+        """
         origin = get_origin(source_type)
         if origin is None:
             raise UPLIDError(
@@ -238,6 +373,7 @@ class UPLID[PREFIX: LiteralString]:
         prefix_type = args[0]
         prefix_args = get_args(prefix_type)
 
+        # Handle TypeVar case (Python 3.12+ type parameter syntax)
         if not prefix_args:
             if hasattr(prefix_type, "__value__"):
                 prefix_args = get_args(prefix_type.__value__)
@@ -250,8 +386,8 @@ class UPLID[PREFIX: LiteralString]:
             if isinstance(v, str):
                 return cls.from_string(v, prefix_str)
             if isinstance(v, UPLID):
-                if v.prefix != prefix_str:
-                    raise UPLIDError(f"Expected prefix {prefix_str!r}, got {v.prefix!r}")
+                if v._prefix != prefix_str:  # noqa: SLF001
+                    raise UPLIDError(f"Expected prefix {prefix_str!r}, got {v._prefix!r}")  # noqa: SLF001
                 return v
             raise UPLIDError(f"Expected UPLID or str, got {type(v).__name__}")
 
@@ -265,6 +401,11 @@ class UPLID[PREFIX: LiteralString]:
             python_schema=core_schema.no_info_plain_validator_function(validate),
             serialization=core_schema.plain_serializer_function_ser_schema(str),
         )
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
 
 
 def _get_prefix[PREFIX: LiteralString](uplid_type: type[UPLID[PREFIX]]) -> str:
@@ -282,7 +423,16 @@ def _get_prefix[PREFIX: LiteralString](uplid_type: type[UPLID[PREFIX]]) -> str:
 def factory[PREFIX: LiteralString](
     uplid_type: type[UPLID[PREFIX]],
 ) -> Callable[[], UPLID[PREFIX]]:
-    """Create a factory function for generating new UPLIDs of a specific type."""
+    """Create a factory function for generating new UPLIDs of a specific type.
+
+    This is useful with Pydantic's Field(default_factory=...).
+
+    Example:
+        UserId = UPLID[Literal["usr"]]
+
+        class User(BaseModel):
+            id: UserId = Field(default_factory=factory(UserId))
+    """
     prefix = _get_prefix(uplid_type)
 
     def _factory() -> UPLID[PREFIX]:
@@ -291,10 +441,40 @@ def factory[PREFIX: LiteralString](
     return _factory
 
 
+def parse[PREFIX: LiteralString](
+    uplid_type: type[UPLID[PREFIX]],
+) -> Callable[[str], UPLID[PREFIX]]:
+    """Create a parse function for converting strings to UPLIDs.
+
+    This is useful for parsing user input outside of Pydantic models.
+    Raises UPLIDError on invalid input.
+
+    Example:
+        UserId = UPLID[Literal["usr"]]
+        parse_user_id = parse(UserId)
+
+        try:
+            user_id = parse_user_id("usr_1a2B3c4D5e6F7g8H9i0J1k")
+        except UPLIDError as e:
+            print(f"Invalid ID: {e}")
+    """
+    prefix = _get_prefix(uplid_type)
+
+    def _parse(v: str) -> UPLID[PREFIX]:
+        return UPLID.from_string(v, prefix)
+
+    return _parse
+
+
+# Backwards compatibility alias (deprecated)
 def validator[PREFIX: LiteralString](
     uplid_type: type[UPLID[PREFIX]],
 ) -> Callable[[str], UPLID[PREFIX]]:
-    """Create a validator function for parsing UPLIDs of a specific type."""
+    """Deprecated: Use parse() instead.
+
+    Creates a parse function that raises ValidationError on failure.
+    This was confusingly named - it's not a Pydantic validator decorator.
+    """
     prefix = _get_prefix(uplid_type)
 
     def _validator(v: str) -> UPLID[PREFIX]:

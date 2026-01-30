@@ -17,14 +17,6 @@ class TestUPLIDGeneration:
         assert uid.prefix == "usr"
         assert isinstance(uid.uid, UUID)
 
-    def test_generate_with_timestamp(self) -> None:
-        from uplid import UPLID
-
-        ts = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
-        uid = UPLID.generate("usr", at=ts)
-        # Timestamp should be within 1 second (ms precision)
-        assert abs(uid.datetime.timestamp() - ts.timestamp()) < 1
-
     def test_generate_rejects_uppercase_prefix(self) -> None:
         from uplid import UPLID, UPLIDError
 
