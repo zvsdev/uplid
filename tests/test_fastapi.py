@@ -72,6 +72,27 @@ def list_users(org_id: Annotated[str | None, Query()] = None) -> list[User]:
     return [u for u in users.values() if u.org_id == parsed_org_id]
 
 
+# Endpoint that accepts User model as JSON body
+@app.put("/users/{user_id}")
+def update_user(
+    user_id: Annotated[UserId, Depends(get_user_id)],
+    user: User,
+) -> User:
+    """Update user - validates UPLID in JSON body."""
+    if str(user_id) != str(user.id):
+        raise HTTPException(400, "User ID in path must match body")
+    users[str(user.id)] = user
+    return user
+
+
+# Endpoint that creates user from full JSON body
+@app.post("/users/from-json")
+def create_user_from_json(user: User) -> User:
+    """Create user from JSON body - UPLID validated by Pydantic."""
+    users[str(user.id)] = user
+    return user
+
+
 client = TestClient(app)
 
 
@@ -167,3 +188,153 @@ class TestFastAPIRoundtrip:
 
         # IDs should match exactly
         assert created_id == fetched_id
+
+
+class TestFastAPIJsonBody:
+    """Test UPLID validation in JSON request bodies."""
+
+    def setup_method(self) -> None:
+        users.clear()
+
+    def test_valid_uplid_in_json_body(self) -> None:
+        """FastAPI validates UPLID in JSON body via Pydantic."""
+        user_id = UPLID.generate("usr")
+        org_id = UPLID.generate("org")
+
+        response = client.post(
+            "/users/from-json",
+            json={"id": str(user_id), "name": "Alice", "org_id": str(org_id)},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == str(user_id)
+        assert data["name"] == "Alice"
+        assert data["org_id"] == str(org_id)
+
+    def test_invalid_uplid_format_in_body_returns_422(self) -> None:
+        """Invalid UPLID format in body is rejected."""
+        response = client.post(
+            "/users/from-json",
+            json={"id": "not_valid", "name": "Bob"},
+        )
+
+        assert response.status_code == 422
+        # Pydantic validation error should indicate the problem
+        assert "id" in response.text  # Error is on the id field
+
+    def test_wrong_prefix_in_body_returns_422(self) -> None:
+        """Wrong prefix (org instead of usr) in body is rejected."""
+        org_id = UPLID.generate("org")  # Wrong prefix for UserId field
+
+        response = client.post(
+            "/users/from-json",
+            json={"id": str(org_id), "name": "Charlie"},
+        )
+
+        assert response.status_code == 422
+
+    def test_wrong_org_prefix_in_body_returns_422(self) -> None:
+        """Wrong prefix for org_id field is rejected."""
+        user_id = UPLID.generate("usr")
+        another_user_id = UPLID.generate("usr")  # Wrong prefix for OrgId field
+
+        response = client.post(
+            "/users/from-json",
+            json={"id": str(user_id), "name": "Dave", "org_id": str(another_user_id)},
+        )
+
+        assert response.status_code == 422
+
+    def test_update_with_matching_ids(self) -> None:
+        """PUT with matching path and body IDs succeeds."""
+        user_id = UPLID.generate("usr")
+
+        response = client.put(
+            f"/users/{user_id}",
+            json={"id": str(user_id), "name": "Updated"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["name"] == "Updated"
+
+    def test_update_with_mismatched_ids_returns_400(self) -> None:
+        """PUT with different path and body IDs fails."""
+        user_id1 = UPLID.generate("usr")
+        user_id2 = UPLID.generate("usr")
+
+        response = client.put(
+            f"/users/{user_id1}",
+            json={"id": str(user_id2), "name": "Mismatch"},
+        )
+
+        assert response.status_code == 400
+
+
+class TestPydanticSerialization:
+    """Test Pydantic model serialization to/from JSON."""
+
+    def test_model_dump_json_and_validate_json_roundtrip(self) -> None:
+        """User model roundtrips through JSON."""
+        original = User(name="Alice", org_id=UPLID.generate("org"))
+
+        # Serialize to JSON string
+        json_str = original.model_dump_json()
+
+        # Deserialize back
+        restored = User.model_validate_json(json_str)
+
+        assert restored.id == original.id
+        assert restored.name == original.name
+        assert restored.org_id == original.org_id
+
+    def test_model_dump_returns_string_ids(self) -> None:
+        """model_dump() returns string IDs, not UPLID objects."""
+        user = User(name="Bob")
+        data = user.model_dump()
+
+        assert isinstance(data["id"], str)
+        assert data["id"].startswith("usr_")
+
+    def test_model_validate_from_dict_with_string_ids(self) -> None:
+        """model_validate() accepts string IDs."""
+        user_id = UPLID.generate("usr")
+        org_id = UPLID.generate("org")
+
+        user = User.model_validate(
+            {
+                "id": str(user_id),
+                "name": "Charlie",
+                "org_id": str(org_id),
+            }
+        )
+
+        assert user.id == user_id
+        assert user.org_id == org_id
+
+    def test_model_validate_from_dict_with_uplid_objects(self) -> None:
+        """model_validate() also accepts UPLID objects directly."""
+        user_id = UPLID.generate("usr")
+        org_id = UPLID.generate("org")
+
+        user = User.model_validate(
+            {
+                "id": user_id,
+                "name": "Diana",
+                "org_id": org_id,
+            }
+        )
+
+        assert user.id == user_id
+        assert user.org_id == org_id
+
+    def test_json_roundtrip_preserves_timestamps(self) -> None:
+        """Timestamps are preserved through JSON roundtrip."""
+        original = User(name="Eve")
+        original_datetime = original.id.datetime
+
+        json_str = original.model_dump_json()
+        restored = User.model_validate_json(json_str)
+
+        assert restored.id.datetime == original_datetime
+        assert restored.id.timestamp == original.id.timestamp
