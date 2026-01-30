@@ -135,10 +135,10 @@ class TestPydanticErrorMessages:
 class TestHelperFunctionErrors:
     def test_factory_with_unparameterized_type_raises(self) -> None:
         with pytest.raises(UPLIDError, match="parameterized"):
-            factory(UPLID)  # type: ignore[arg-type]
+            factory(UPLID)
 
     def test_parse_with_unparameterized_type_raises(self) -> None:
         from uplid import parse
 
         with pytest.raises(UPLIDError, match="parameterized"):
-            parse(UPLID)  # type: ignore[arg-type]
+            parse(UPLID)
