@@ -50,21 +50,44 @@ from pydantic import BaseModel, Field
 from uplid import UPLID, factory
 
 UserId = UPLID[Literal["usr"]]
+OrgId = UPLID[Literal["org"]]
 UserIdFactory = factory(UserId)
 
 class User(BaseModel):
     id: UserId = Field(default_factory=UserIdFactory)
     name: str
+    org_id: OrgId | None = None
 
 # Auto-generates ID
 user = User(name="Alice")
 
-# Validates from string
+# Validates from string (e.g., from JSON)
 user = User(id="usr_0M3xL9kQ7vR2nP5wY1jZ4c", name="Bob")
 
-# Serializes to string
-user.model_dump()      # {"id": "usr_...", "name": "..."}
-user.model_dump_json() # '{"id": "usr_...", "name": "..."}'
+# Also accepts UPLID objects directly
+user = User(id=UPLID.generate("usr"), name="Charlie")
+
+# Wrong prefix raises ValidationError
+User(id="org_xxx", name="Bad")  # ValidationError: expected 'usr', got 'org'
+```
+
+## Pydantic Serialization
+
+```python
+# Serialize to dict (IDs become strings)
+user.model_dump()
+# {"id": "usr_0M3xL9kQ7vR2nP5wY1jZ4c", "name": "Alice", "org_id": None}
+
+# Serialize to JSON string
+json_str = user.model_dump_json()
+# '{"id":"usr_0M3xL9kQ7vR2nP5wY1jZ4c","name":"Alice","org_id":null}'
+
+# Deserialize from JSON (validates UPLIDs)
+restored = User.model_validate_json(json_str)
+assert restored.id == user.id  # Same UPLID
+
+# Deserialize from dict
+user = User.model_validate({"id": "usr_xxx...", "name": "Dave"})
 ```
 
 ## FastAPI Integration
@@ -72,11 +95,18 @@ user.model_dump_json() # '{"id": "usr_...", "name": "..."}'
 ```python
 from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException
+from pydantic import BaseModel, Field
 from uplid import UPLID, UPLIDError, factory, parse
 
 UserId = UPLID[Literal["usr"]]
 UserIdFactory = factory(UserId)
 parse_user_id = parse(UserId)
+
+class User(BaseModel):
+    id: UserId = Field(default_factory=UserIdFactory)
+    name: str
+
+app = FastAPI()
 
 # Dependency for path/query param validation
 def get_user_id(user_id: str) -> UserId:
@@ -85,10 +115,23 @@ def get_user_id(user_id: str) -> UserId:
     except UPLIDError as e:
         raise HTTPException(422, f"Invalid user ID: {e}") from None
 
-app = FastAPI()
-
+# Path parameter with validation
 @app.get("/users/{user_id}")
 def get_user(user_id: Annotated[UserId, Depends(get_user_id)]) -> User:
+    ...
+
+# JSON body - Pydantic validates UPLID fields automatically
+@app.post("/users")
+def create_user(user: User) -> User:
+    # user.id is already validated as UserId
+    # Wrong prefix in JSON body returns 422
+    return user
+
+@app.put("/users/{user_id}")
+def update_user(
+    user_id: Annotated[UserId, Depends(get_user_id)],
+    user: User,  # UPLID in body validated by Pydantic
+) -> User:
     ...
 ```
 
@@ -109,6 +152,7 @@ user = UserRow(id=str(UPLID.generate("usr")), name="Alice")
 # Retrieve and parse
 row = session.query(UserRow).first()
 uid = UPLID.from_string(row.id, "usr")
+print(uid.datetime)  # When ID was created
 ```
 
 ## UPLIDType Protocol
@@ -142,3 +186,5 @@ Example: `usr_0M3xL9kQ7vR2nP5wY1jZ4c`
 - Wrong prefix on parse
 - Invalid base62 encoding
 - Malformed string format
+
+In Pydantic models, wrong prefix raises `ValidationError`.

@@ -66,9 +66,7 @@ class TestSQLAlchemyStorage:
             session.commit()
 
             # Query by string ID
-            row = session.execute(
-                select(UserRow).where(UserRow.id == str(user_id))
-            ).scalar_one()
+            row = session.execute(select(UserRow).where(UserRow.id == str(user_id))).scalar_one()
             assert row.name == "Charlie"
 
     def test_multiple_users_with_org(self) -> None:
@@ -82,9 +80,11 @@ class TestSQLAlchemyStorage:
             session.commit()
 
             # Query by org
-            rows = session.execute(
-                select(UserRow).where(UserRow.org_id == str(org_id))
-            ).scalars().all()
+            rows = (
+                session.execute(select(UserRow).where(UserRow.org_id == str(org_id)))
+                .scalars()
+                .all()
+            )
             assert len(rows) == 2
             assert {r.name for r in rows} == {"Alice", "Bob"}
 
@@ -98,9 +98,7 @@ class TestSQLAlchemyStorage:
             session.commit()
 
             # Query ordered by ID
-            rows = session.execute(
-                select(UserRow).order_by(UserRow.id)
-            ).scalars().all()
+            rows = session.execute(select(UserRow).order_by(UserRow.id)).scalars().all()
 
             # String ordering of base62 UUIDv7 preserves chronological order
             retrieved_ids = [UPLID.from_string(r.id, "usr") for r in rows]

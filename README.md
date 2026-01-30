@@ -58,15 +58,46 @@ print(parsed.timestamp)  # 1738240496.789
 # user.org_id = user_id  # Error: UserId is not compatible with OrgId
 ```
 
+## Pydantic Serialization
+
+UPLIDs serialize to strings and deserialize with validation:
+
+```python
+from pydantic import BaseModel, Field
+from uplid import UPLID, factory
+
+UserId = UPLID[Literal["usr"]]
+UserIdFactory = factory(UserId)
+
+class User(BaseModel):
+    id: UserId = Field(default_factory=UserIdFactory)
+    name: str
+
+user = User(name="Alice")
+
+# Serialize to dict - ID becomes string
+user.model_dump()
+# {"id": "usr_0M3xL9kQ7vR2nP5wY1jZ4c", "name": "Alice"}
+
+# Serialize to JSON
+json_str = user.model_dump_json()
+
+# Deserialize - validates UPLID format and prefix
+restored = User.model_validate_json(json_str)
+assert restored.id == user.id
+
+# Wrong prefix raises ValidationError
+User(id="org_xxx...", name="Bad")  # ValidationError
+```
+
 ## FastAPI Integration
 
 ```python
 from typing import Annotated, Literal
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Cookie, Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 from uplid import UPLID, UPLIDError, factory, parse
 
-# Define types and helpers
 UserId = UPLID[Literal["usr"]]
 UserIdFactory = factory(UserId)
 parse_user_id = parse(UserId)
@@ -78,10 +109,9 @@ class User(BaseModel):
 
 
 app = FastAPI()
-users: dict[str, User] = {}
 
 
-# Dependency for validating path parameters
+# Dependency for validating path/query/header/cookie parameters
 def get_user_id(user_id: str) -> UserId:
     try:
         return parse_user_id(user_id)
@@ -89,19 +119,43 @@ def get_user_id(user_id: str) -> UserId:
         raise HTTPException(422, f"Invalid user ID: {e}") from None
 
 
+# Path parameter validation
+@app.get("/users/{user_id}")
+def get_user(user_id: Annotated[UserId, Depends(get_user_id)]) -> User:
+    ...
+
+
+# JSON body - Pydantic validates UPLID fields automatically
 @app.post("/users")
-def create_user(name: str) -> User:
-    user = User(name=name)
-    users[str(user.id)] = user
+def create_user(user: User) -> User:
+    # user.id validated as UserId, wrong prefix returns 422
     return user
 
 
-# Use Depends for path parameter validation
-@app.get("/users/{user_id}")
-def get_user(user_id: Annotated[UserId, Depends(get_user_id)]) -> User:
-    if str(user_id) not in users:
-        raise HTTPException(404, "User not found")
-    return users[str(user_id)]
+# Header validation
+def get_user_id_from_header(x_user_id: Annotated[str, Header()]) -> UserId:
+    try:
+        return parse_user_id(x_user_id)
+    except UPLIDError as e:
+        raise HTTPException(422, f"Invalid X-User-Id header: {e}") from None
+
+
+@app.get("/me")
+def get_current_user(user_id: Annotated[UserId, Depends(get_user_id_from_header)]) -> User:
+    ...
+
+
+# Cookie validation
+def get_session_user(session_user_id: Annotated[str, Cookie()]) -> UserId:
+    try:
+        return parse_user_id(session_user_id)
+    except UPLIDError as e:
+        raise HTTPException(422, f"Invalid session cookie: {e}") from None
+
+
+@app.get("/session")
+def get_session(user_id: Annotated[UserId, Depends(get_session_user)]) -> User:
+    ...
 ```
 
 ## Database Storage

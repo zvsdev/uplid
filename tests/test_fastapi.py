@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Query
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, Field
 
@@ -91,6 +91,42 @@ def create_user_from_json(user: User) -> User:
     """Create user from JSON body - UPLID validated by Pydantic."""
     users[str(user.id)] = user
     return user
+
+
+# Header validation dependency
+def get_user_id_from_header(x_user_id: Annotated[str, Header()]) -> UserId:
+    try:
+        return parse_user_id(x_user_id)
+    except UPLIDError as e:
+        raise HTTPException(422, f"Invalid X-User-Id header: {e}") from None
+
+
+@app.get("/me")
+def get_current_user(
+    user_id: Annotated[UserId, Depends(get_user_id_from_header)],
+) -> User:
+    """Get user from X-User-Id header."""
+    if str(user_id) not in users:
+        raise HTTPException(404, "User not found")
+    return users[str(user_id)]
+
+
+# Cookie validation dependency
+def get_session_user(session_user_id: Annotated[str, Cookie()]) -> UserId:
+    try:
+        return parse_user_id(session_user_id)
+    except UPLIDError as e:
+        raise HTTPException(422, f"Invalid session cookie: {e}") from None
+
+
+@app.get("/session")
+def get_session(
+    user_id: Annotated[UserId, Depends(get_session_user)],
+) -> User:
+    """Get user from session_user_id cookie."""
+    if str(user_id) not in users:
+        raise HTTPException(404, "User not found")
+    return users[str(user_id)]
 
 
 client = TestClient(app)
@@ -338,3 +374,83 @@ class TestPydanticSerialization:
 
         assert restored.id.datetime == original_datetime
         assert restored.id.timestamp == original.id.timestamp
+
+
+class TestFastAPIHeaders:
+    """Test UPLID validation in HTTP headers."""
+
+    def setup_method(self) -> None:
+        users.clear()
+
+    def test_valid_user_id_in_header(self) -> None:
+        """Valid UPLID in X-User-Id header is accepted."""
+        # Create a user first
+        response = client.post("/users?name=Alice")
+        user_id = response.json()["id"]
+
+        # Fetch via header
+        response = client.get("/me", headers={"X-User-Id": user_id})
+        assert response.status_code == 200
+        assert response.json()["name"] == "Alice"
+
+    def test_invalid_user_id_in_header_returns_422(self) -> None:
+        """Invalid UPLID format in header is rejected."""
+        response = client.get("/me", headers={"X-User-Id": "not_valid"})
+        assert response.status_code == 422
+
+    def test_wrong_prefix_in_header_returns_422(self) -> None:
+        """Wrong prefix in header is rejected."""
+        org_id = UPLID.generate("org")
+        response = client.get("/me", headers={"X-User-Id": str(org_id)})
+        assert response.status_code == 422
+
+    def test_missing_header_returns_422(self) -> None:
+        """Missing required header returns 422."""
+        response = client.get("/me")
+        assert response.status_code == 422
+
+    def test_user_not_found_via_header_returns_404(self) -> None:
+        """Valid UPLID but non-existent user returns 404."""
+        valid_but_nonexistent = UPLID.generate("usr")
+        response = client.get("/me", headers={"X-User-Id": str(valid_but_nonexistent)})
+        assert response.status_code == 404
+
+
+class TestFastAPICookies:
+    """Test UPLID validation in cookies."""
+
+    def setup_method(self) -> None:
+        users.clear()
+
+    def test_valid_user_id_in_cookie(self) -> None:
+        """Valid UPLID in session cookie is accepted."""
+        # Create a user first
+        response = client.post("/users?name=Bob")
+        user_id = response.json()["id"]
+
+        # Fetch via cookie
+        response = client.get("/session", cookies={"session_user_id": user_id})
+        assert response.status_code == 200
+        assert response.json()["name"] == "Bob"
+
+    def test_invalid_user_id_in_cookie_returns_422(self) -> None:
+        """Invalid UPLID format in cookie is rejected."""
+        response = client.get("/session", cookies={"session_user_id": "bad_cookie"})
+        assert response.status_code == 422
+
+    def test_wrong_prefix_in_cookie_returns_422(self) -> None:
+        """Wrong prefix in cookie is rejected."""
+        org_id = UPLID.generate("org")
+        response = client.get("/session", cookies={"session_user_id": str(org_id)})
+        assert response.status_code == 422
+
+    def test_missing_cookie_returns_422(self) -> None:
+        """Missing required cookie returns 422."""
+        response = client.get("/session")
+        assert response.status_code == 422
+
+    def test_user_not_found_via_cookie_returns_404(self) -> None:
+        """Valid UPLID but non-existent user returns 404."""
+        valid_but_nonexistent = UPLID.generate("usr")
+        response = client.get("/session", cookies={"session_user_id": str(valid_but_nonexistent)})
+        assert response.status_code == 404
