@@ -1,7 +1,9 @@
 name: Release
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
 
 concurrency:
@@ -9,11 +11,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  check-version:
+  release:
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    outputs:
-      changed: ${{ steps.version.outputs.changed }}
-      version: ${{ steps.version.outputs.current }}
+    timeout-minutes: 1
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v6
         with:
@@ -36,44 +42,31 @@ jobs:
             echo "Version unchanged: $CURRENT"
           fi
 
-  ci:
-    needs: check-version
-    if: needs.check-version.outputs.changed == 'true'
-    uses: ./.github/workflows/ci.yml
-
-  release:
-    needs: [check-version, ci]
-    if: needs.check-version.outputs.changed == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 1
-    environment: release
-    permissions:
-      contents: write
-      id-token: write
-      attestations: write
-    steps:
-      - uses: actions/checkout@v6
-
       - name: Install uv
+        if: steps.version.outputs.changed == 'true'
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
 
       - name: Build
+        if: steps.version.outputs.changed == 'true'
         run: uv build
 
       - name: Generate artifact attestation
+        if: steps.version.outputs.changed == 'true'
         uses: actions/attest-build-provenance@v3
         with:
           subject-path: dist/*
 
       - name: Publish to PyPI
+        if: steps.version.outputs.changed == 'true'
         run: uv publish --trusted-publishing always
 
       - name: Create GitHub Release
+        if: steps.version.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.check-version.outputs.version }}
+          VERSION: ${{ steps.version.outputs.current }}
         run: |
           gh release create "v$VERSION" dist/* \
             --title "v$VERSION" \

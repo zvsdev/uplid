@@ -1,0 +1,190 @@
+# UPLID - LLM Reference
+
+Type-safe prefixed IDs for Python 3.14+. Built on UUIDv7, base62 encoded.
+
+## Install
+```
+pip install uplid
+```
+Requires: Python 3.14+, Pydantic 2.10+
+
+## Exports
+```python
+from uplid import UPLID, UPLIDError, UPLIDType, factory, parse
+```
+
+## Core Usage
+
+```python
+from typing import Literal
+from uplid import UPLID, factory, parse
+
+# Define typed aliases and factories
+UserId = UPLID[Literal["usr"]]
+OrgId = UPLID[Literal["org"]]
+UserIdFactory = factory(UserId)
+parse_user_id = parse(UserId)
+
+# Generate
+uid = UPLID.generate("usr")  # usr_0M3xL9kQ7vR2nP5wY1jZ4c
+
+# Parse
+uid = UPLID.from_string("usr_0M3xL9kQ7vR2nP5wY1jZ4c", "usr")
+uid = parse_user_id("usr_0M3xL9kQ7vR2nP5wY1jZ4c")  # same thing
+
+# Properties
+uid.prefix      # str: "usr"
+uid.uid         # UUID: underlying UUIDv7
+uid.base62_uid  # str: 22-char base62
+uid.datetime    # datetime: UTC timestamp from UUIDv7
+uid.timestamp   # float: Unix timestamp
+
+# String conversion
+str(uid)  # "usr_0M3xL9kQ7vR2nP5wY1jZ4c"
+```
+
+## Pydantic Models
+
+```python
+from pydantic import BaseModel, Field
+from uplid import UPLID, factory
+
+UserId = UPLID[Literal["usr"]]
+OrgId = UPLID[Literal["org"]]
+UserIdFactory = factory(UserId)
+
+class User(BaseModel):
+    id: UserId = Field(default_factory=UserIdFactory)
+    name: str
+    org_id: OrgId | None = None
+
+# Auto-generates ID
+user = User(name="Alice")
+
+# Validates from string (e.g., from JSON)
+user = User(id="usr_0M3xL9kQ7vR2nP5wY1jZ4c", name="Bob")
+
+# Also accepts UPLID objects directly
+user = User(id=UPLID.generate("usr"), name="Charlie")
+
+# Wrong prefix raises ValidationError
+User(id="org_xxx", name="Bad")  # ValidationError: expected 'usr', got 'org'
+```
+
+## Pydantic Serialization
+
+```python
+# Serialize to dict (IDs become strings)
+user.model_dump()
+# {"id": "usr_0M3xL9kQ7vR2nP5wY1jZ4c", "name": "Alice", "org_id": None}
+
+# Serialize to JSON string
+json_str = user.model_dump_json()
+# '{"id":"usr_0M3xL9kQ7vR2nP5wY1jZ4c","name":"Alice","org_id":null}'
+
+# Deserialize from JSON (validates UPLIDs)
+restored = User.model_validate_json(json_str)
+assert restored.id == user.id  # Same UPLID
+
+# Deserialize from dict
+user = User.model_validate({"id": "usr_xxx...", "name": "Dave"})
+```
+
+## FastAPI Integration
+
+```python
+from typing import Annotated
+from fastapi import Depends, FastAPI, HTTPException
+from pydantic import BaseModel, Field
+from uplid import UPLID, UPLIDError, factory, parse
+
+UserId = UPLID[Literal["usr"]]
+UserIdFactory = factory(UserId)
+parse_user_id = parse(UserId)
+
+class User(BaseModel):
+    id: UserId = Field(default_factory=UserIdFactory)
+    name: str
+
+app = FastAPI()
+
+# Dependency for path/query param validation
+def get_user_id(user_id: str) -> UserId:
+    try:
+        return parse_user_id(user_id)
+    except UPLIDError as e:
+        raise HTTPException(422, f"Invalid user ID: {e}") from None
+
+# Path parameter with validation
+@app.get("/users/{user_id}")
+def get_user(user_id: Annotated[UserId, Depends(get_user_id)]) -> User:
+    ...
+
+# JSON body - Pydantic validates UPLID fields automatically
+@app.post("/users")
+def create_user(user: User) -> User:
+    # user.id is already validated as UserId
+    # Wrong prefix in JSON body returns 422
+    return user
+
+@app.put("/users/{user_id}")
+def update_user(
+    user_id: Annotated[UserId, Depends(get_user_id)],
+    user: User,  # UPLID in body validated by Pydantic
+) -> User:
+    ...
+```
+
+## SQLAlchemy Storage
+
+Store as VARCHAR(87): 64 (max prefix) + 1 (underscore) + 22 (base62).
+
+```python
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+class UserRow(Base):
+    id: Mapped[str] = mapped_column(String(87), primary_key=True)
+
+# Store
+user = UserRow(id=str(UPLID.generate("usr")), name="Alice")
+
+# Retrieve and parse
+row = session.query(UserRow).first()
+uid = UPLID.from_string(row.id, "usr")
+print(uid.datetime)  # When ID was created
+```
+
+## UPLIDType Protocol
+
+For functions accepting any UPLID:
+
+```python
+from uplid import UPLIDType
+
+def log_entity(id: UPLIDType) -> None:
+    print(f"{id.prefix} at {id.datetime}")
+```
+
+## Prefix Rules
+
+- snake_case only: `usr`, `api_key`, `org_member`
+- Lowercase letters + single underscores
+- Cannot start/end with underscore
+- Max 64 characters
+
+## Format
+
+`{prefix}_{base62}` where base62 is 22 characters encoding a UUIDv7.
+
+Example: `usr_0M3xL9kQ7vR2nP5wY1jZ4c`
+
+## Error Handling
+
+`UPLIDError` extends `ValueError`. Raised for:
+- Invalid prefix format
+- Wrong prefix on parse
+- Invalid base62 encoding
+- Malformed string format
+
+In Pydantic models, wrong prefix raises `ValidationError`.

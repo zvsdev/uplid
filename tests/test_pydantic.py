@@ -9,7 +9,10 @@ from uplid import UPLID, UPLIDError, factory
 
 
 UserId = UPLID[Literal["usr"]]
+OrgId = UPLID[Literal["org"]]
 ApiKeyId = UPLID[Literal["api_key"]]
+UserIdFactory = factory(UserId)
+OrgIdFactory = factory(OrgId)
 
 
 class TestPydanticValidation:
@@ -17,7 +20,7 @@ class TestPydanticValidation:
         class User(BaseModel):
             id: UserId
 
-        uid = UPLID.generate("usr")
+        uid = UserIdFactory()
         user = User(id=str(uid))  # type: ignore[arg-type]
         assert user.id == uid
 
@@ -25,7 +28,7 @@ class TestPydanticValidation:
         class User(BaseModel):
             id: UserId
 
-        uid = UPLID.generate("usr")
+        uid = UserIdFactory()
         user = User(id=uid)
         assert user.id == uid
 
@@ -33,7 +36,7 @@ class TestPydanticValidation:
         class User(BaseModel):
             id: UserId
 
-        org_id = UPLID.generate("org")
+        org_id = OrgIdFactory()
         with pytest.raises(ValidationError):
             User(id=org_id)
 
@@ -41,7 +44,7 @@ class TestPydanticValidation:
         class User(BaseModel):
             id: UserId
 
-        org_id = UPLID.generate("org")
+        org_id = OrgIdFactory()
         with pytest.raises(ValidationError):
             User(id=str(org_id))  # type: ignore[arg-type]
 

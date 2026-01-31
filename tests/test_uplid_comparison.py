@@ -1,18 +1,23 @@
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID, uuid7
 
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from uplid import UPLID
+from uplid import UPLID, factory
 
 from .conftest import prefix_strategy
 
 
+UserId = UPLID[Literal["usr"]]
+UserIdFactory = factory(UserId)
+
+
 class TestUPLIDEquality:
     def test_equal_uplids_are_equal(self) -> None:
-        uid1 = UPLID.generate("usr")
+        uid1 = UserIdFactory()
         uid2 = UPLID.from_string(str(uid1), "usr")
         assert uid1 == uid2
 
@@ -23,16 +28,16 @@ class TestUPLIDEquality:
         assert uid1 != uid2
 
     def test_different_uuids_not_equal(self) -> None:
-        uid1 = UPLID.generate("usr")
-        uid2 = UPLID.generate("usr")
+        uid1 = UserIdFactory()
+        uid2 = UserIdFactory()
         assert uid1 != uid2
 
     def test_not_equal_to_string(self) -> None:
-        uid = UPLID.generate("usr")
+        uid = UserIdFactory()
         assert uid != str(uid)
 
     def test_not_equal_to_none(self) -> None:
-        uid = UPLID.generate("usr")
+        uid = UserIdFactory()
         assert uid != None  # noqa: E711
 
     @given(prefix_strategy)
@@ -48,7 +53,7 @@ class TestUPLIDEquality:
         assert uid2 == uid1  # Symmetry: a == b implies b == a
 
     def test_equality_is_transitive(self) -> None:
-        uid1 = UPLID.generate("usr")
+        uid1 = UserIdFactory()
         uid2 = UPLID.from_string(str(uid1), "usr")
         uid3 = UPLID.from_string(str(uid2), "usr")
         assert uid1 == uid2
@@ -58,7 +63,7 @@ class TestUPLIDEquality:
 
 class TestUPLIDHashing:
     def test_equal_uplids_have_equal_hashes(self) -> None:
-        uid1 = UPLID.generate("usr")
+        uid1 = UserIdFactory()
         uid2 = UPLID.from_string(str(uid1), "usr")
         assert hash(uid1) == hash(uid2)
 
@@ -70,14 +75,14 @@ class TestUPLIDHashing:
             assert hash(uid1) == hash(uid2)
 
     def test_can_use_as_dict_key(self) -> None:
-        uid = UPLID.generate("usr")
+        uid = UserIdFactory()
         d = {uid: "value"}
         assert d[uid] == "value"
 
     def test_can_use_in_set(self) -> None:
-        uid1 = UPLID.generate("usr")
+        uid1 = UserIdFactory()
         uid2 = UPLID.from_string(str(uid1), "usr")
-        uid3 = UPLID.generate("usr")
+        uid3 = UserIdFactory()
 
         s = {uid1, uid2, uid3}
         assert len(s) == 2  # uid1 and uid2 are equal
@@ -106,7 +111,7 @@ class TestUPLIDOrdering:
         assert a < z
 
     def test_comparison_with_non_uplid_returns_not_implemented(self) -> None:
-        uid = UPLID.generate("usr")
+        uid = UserIdFactory()
         assert uid.__lt__("string") == NotImplemented
         assert uid.__le__("string") == NotImplemented
         assert uid.__gt__("string") == NotImplemented

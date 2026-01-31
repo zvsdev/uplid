@@ -1,6 +1,6 @@
 [project]
 name = "uplid"
-version = "1.0.0"
+version = "1.0.1"
 description = "Universal Prefixed Literal IDs - type-safe, human-readable identifiers"
 authors = [{ name = "ZVS", email = "zvs@daswolf.dev" }]
 readme = "README.md"
@@ -33,6 +33,9 @@ dev = [
     "hypothesis>=6.151.4,<7",
     "ty>=0.0.14,<0.1",
     "ruff>=0.14.14,<0.15",
+    "fastapi>=0.115,<1",
+    "httpx>=0.28,<1",
+    "sqlalchemy>=2.0,<3",
 ]
 
 [tool.ruff]
