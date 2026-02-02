@@ -25,7 +25,7 @@ Example:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypedDict, Unpack, get_args
+from typing import TYPE_CHECKING, Any, TypedDict, Unpack, get_args
 
 from sqlalchemy import Text
 from sqlalchemy.orm import mapped_column
@@ -145,7 +145,7 @@ def uplid_column[T](
     return mapped_column(UPLIDColumn(prefix), **kwargs)
 
 
-def uplid_field[T](uplid_type: type[T], **kwargs: object) -> object:
+def uplid_field[T](uplid_type: type[T], **kwargs: Any) -> Any:  # noqa: ANN401
     """Create a SQLModel Field for a UPLID type.
 
     Infers the prefix from the type parameter and configures sa_type
@@ -175,7 +175,8 @@ def uplid_field[T](uplid_type: type[T], **kwargs: object) -> object:
     from sqlmodel import Field
 
     prefix = _extract_prefix(uplid_type)
-    return Field(sa_type=UPLIDColumn(prefix), **kwargs)
+    # SQLModel's Field has complex overloaded signatures that don't match **kwargs
+    return Field(sa_type=UPLIDColumn(prefix), **kwargs)  # type: ignore[no-matching-overload]
 
 
 __all__ = ["UPLIDColumn", "uplid_column", "uplid_field"]
