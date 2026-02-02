@@ -167,10 +167,50 @@ class TestUPLIDType:
 class TestUplitColumnErrors:
     """Test error handling in uplid_column."""
 
+    def setup_method(self) -> None:
+        self.engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(self.engine)
+
     def test_rejects_unparameterized_type(self) -> None:
         """uplid_column requires a parameterized UPLID type."""
         with pytest.raises(TypeError, match="must be parameterized"):
             uplid_column(UPLID)
+
+    def test_rejects_wrong_prefix_uplid_on_write(self) -> None:
+        """Storing a UPLID with wrong prefix raises error."""
+        org_id = OrgIdFactory()  # org_ prefix, but column expects usr_
+
+        # Trying to store org_id in a UserId column should fail
+        # SQLAlchemy wraps errors in StatementError
+        with (
+            Session(self.engine) as session,
+            pytest.raises(sqlalchemy.exc.StatementError, match="Expected prefix 'usr'"),
+        ):
+            user = User(id=org_id, name="Bad")
+            session.add(user)
+            session.flush()
+
+    def test_rejects_wrong_prefix_string_on_write(self) -> None:
+        """Storing a string with wrong prefix raises error."""
+        org_id = OrgIdFactory()
+
+        with (
+            Session(self.engine) as session,
+            pytest.raises(sqlalchemy.exc.StatementError, match="Expected prefix"),
+        ):
+            user = User(id=str(org_id), name="Bad")
+            session.add(user)
+            session.flush()
+
+    def test_rejects_invalid_string_on_write(self) -> None:
+        """Storing an invalid string raises error."""
+        with (
+            Session(self.engine) as session,
+            pytest.raises(sqlalchemy.exc.StatementError, match="Expected prefix"),
+        ):
+            user = User(id="not_a_valid_uplid", name="Bad")
+            session.add(user)
+            session.flush()
 
 
 class TestSQLAlchemyTransactions:

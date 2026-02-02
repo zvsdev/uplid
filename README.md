@@ -8,7 +8,7 @@ Universal Prefixed Literal IDs - type-safe, human-readable identifiers for Pytho
 
 ## Features
 
-- **Type-safe prefixes**: `UPLID[Literal["usr"]]` prevents mixing user IDs with org IDs at compile time
+- **Type-safe prefixes**: `UPLID[Literal["usr"]]` prevents mixing user IDs with org IDs (caught by type checkers like mypy/pyright/ty)
 - **Human-readable**: `usr_0M3xL9kQ7vR2nP5wY1jZ4c` (Stripe-style prefixed IDs)
 - **Time-sortable**: Built on UUIDv7 (RFC 9562) for natural chronological ordering
 - **Compact**: 22-character base62 encoding (URL-safe, no special characters)
@@ -54,8 +54,8 @@ parsed = UPLID.from_string("usr_0M3xL9kQ7vR2nP5wY1jZ4c", "usr")
 print(parsed.datetime)   # 2026-01-30 12:34:56.789000+00:00
 print(parsed.timestamp)  # 1738240496.789
 
-# Type safety - these are compile-time errors:
-# user.org_id = user_id  # Error: UserId is not compatible with OrgId
+# Type safety - type checkers (mypy/pyright/ty) catch prefix mismatches:
+# user.org_id = user_id  # Type error: UserId is not compatible with OrgId
 ```
 
 ## Pydantic Serialization
