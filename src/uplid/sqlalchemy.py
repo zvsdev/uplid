@@ -25,7 +25,7 @@ Example:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, TypedDict, Unpack, get_args
+from typing import TYPE_CHECKING, Any, TypedDict, Unpack, cast, get_args
 
 from sqlalchemy import Text
 from sqlalchemy.orm import mapped_column
@@ -145,7 +145,20 @@ def uplid_column[T](
     return mapped_column(UPLIDColumn(prefix), **kwargs)
 
 
-def uplid_field[T](uplid_type: type[T], **kwargs: Any) -> Any:  # noqa: ANN401
+class UPLIDFieldKwargs(TypedDict, total=False):
+    """Keyword arguments for uplid_field, matching SQLModel Field's common options."""
+
+    default: object
+    default_factory: Callable[[], object]
+    primary_key: bool
+    index: bool
+    unique: bool
+
+
+def uplid_field[T](
+    uplid_type: type[T],
+    **kwargs: Unpack[UPLIDFieldKwargs],
+) -> Any:  # noqa: ANN401 - return type matches SQLModel's Field
     """Create a SQLModel Field for a UPLID type.
 
     Infers the prefix from the type parameter and configures sa_type
@@ -153,8 +166,8 @@ def uplid_field[T](uplid_type: type[T], **kwargs: Any) -> Any:  # noqa: ANN401
 
     Args:
         uplid_type: A parameterized UPLID type like UPLID[Literal["usr"]].
-        **kwargs: Additional arguments passed to Field
-            (e.g., primary_key=True, default_factory=factory, index=True).
+        **kwargs: Additional arguments passed to Field.
+            Supports: default, default_factory, primary_key, index, unique.
 
     Returns:
         A SQLModel Field configured with the appropriate UPLIDColumn.
@@ -175,8 +188,10 @@ def uplid_field[T](uplid_type: type[T], **kwargs: Any) -> Any:  # noqa: ANN401
     from sqlmodel import Field
 
     prefix = _extract_prefix(uplid_type)
-    # SQLModel's Field has complex overloaded signatures that don't match **kwargs
-    return Field(sa_type=UPLIDColumn(prefix), **kwargs)  # type: ignore[no-matching-overload]
+    # SQLModel's sa_type is incorrectly typed as type[Any] but accepts TypeEngine instances.
+    # Use cast to satisfy the type checker until SQLModel fixes their stubs.
+    sa_type = cast("type[Any]", UPLIDColumn(prefix))
+    return Field(sa_type=sa_type, **kwargs)
 
 
 __all__ = ["UPLIDColumn", "uplid_column", "uplid_field"]
