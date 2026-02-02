@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from typing import Literal
 
+import pytest
+import sqlalchemy.exc
 from sqlalchemy import String, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from uplid import UPLID, factory
+from uplid.sqlalchemy import uplid_column
 
 
 UserId = UPLID[Literal["usr"]]
@@ -18,109 +21,161 @@ class Base(DeclarativeBase):
     pass
 
 
-class UserRow(Base):
+class User(Base):
+    """User model using uplid_column helper - columns are typed as UPLID."""
+
     __tablename__ = "users"
 
-    id: Mapped[str] = mapped_column(String(87), primary_key=True)
+    id: Mapped[UserId] = uplid_column(UserId, primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
-    org_id: Mapped[str | None] = mapped_column(String(87), nullable=True)
+    org_id: Mapped[OrgId | None] = uplid_column(OrgId, nullable=True)
 
 
-class TestSQLAlchemyStorage:
+class TestUPLIDColumn:
+    """Test the uplid_column helper with automatic serialization."""
+
     def setup_method(self) -> None:
         self.engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(self.engine)
 
-    def test_store_and_retrieve_uplid(self) -> None:
+    def test_store_and_retrieve_as_uplid(self) -> None:
+        """Columns return UPLID objects, not strings."""
         user_id = UserIdFactory()
 
         with Session(self.engine) as session:
-            user = UserRow(id=str(user_id), name="Alice")
+            user = User(id=user_id, name="Alice")
             session.add(user)
             session.commit()
 
-            # Retrieve
-            row = session.execute(select(UserRow)).scalar_one()
-            assert row.id == str(user_id)
-            assert row.name == "Alice"
+            row = session.execute(select(User)).scalar_one()
+            # Returns UPLID, not string
+            assert isinstance(row.id, UPLID)
+            assert row.id == user_id
+            assert row.id.prefix == "usr"
 
-    def test_parse_retrieved_id(self) -> None:
+    def test_assign_uplid_directly(self) -> None:
+        """Can assign UPLID objects directly to columns."""
         user_id = UserIdFactory()
-
-        with Session(self.engine) as session:
-            session.add(UserRow(id=str(user_id), name="Bob"))
-            session.commit()
-
-            row = session.execute(select(UserRow)).scalar_one()
-            parsed = UPLID.from_string(row.id, "usr")
-
-            assert parsed == user_id
-            assert parsed.prefix == "usr"
-            assert parsed.datetime == user_id.datetime
-
-    def test_query_by_id(self) -> None:
-        user_id = UserIdFactory()
-
-        with Session(self.engine) as session:
-            session.add(UserRow(id=str(user_id), name="Charlie"))
-            session.commit()
-
-            # Query by string ID
-            row = session.execute(select(UserRow).where(UserRow.id == str(user_id))).scalar_one()
-            assert row.name == "Charlie"
-
-    def test_multiple_users_with_org(self) -> None:
         org_id = OrgIdFactory()
-        user1_id = UserIdFactory()
-        user2_id = UserIdFactory()
 
         with Session(self.engine) as session:
-            session.add(UserRow(id=str(user1_id), name="Alice", org_id=str(org_id)))
-            session.add(UserRow(id=str(user2_id), name="Bob", org_id=str(org_id)))
+            user = User(id=user_id, name="Bob", org_id=org_id)
+            session.add(user)
             session.commit()
 
-            # Query by org
-            rows = (
-                session.execute(select(UserRow).where(UserRow.org_id == str(org_id)))
-                .scalars()
-                .all()
-            )
-            assert len(rows) == 2
-            assert {r.name for r in rows} == {"Alice", "Bob"}
+            row = session.execute(select(User)).scalar_one()
+            assert row.id == user_id
+            assert row.org_id == org_id
 
-    def test_id_ordering_matches_creation_order(self) -> None:
-        # UUIDv7 IDs should sort chronologically
+    def test_nullable_uplid_column(self) -> None:
+        """Nullable UPLID columns work correctly."""
+        user_id = UserIdFactory()
+
+        with Session(self.engine) as session:
+            user = User(id=user_id, name="Charlie", org_id=None)
+            session.add(user)
+            session.commit()
+
+            row = session.execute(select(User)).scalar_one()
+            assert row.org_id is None
+
+    def test_query_by_uplid(self) -> None:
+        """Can query using UPLID objects."""
+        user_id = UserIdFactory()
+
+        with Session(self.engine) as session:
+            session.add(User(id=user_id, name="Dave"))
+            session.commit()
+
+            row = session.execute(select(User).where(User.id == user_id)).scalar_one()
+            assert row.name == "Dave"
+
+    def test_query_by_string(self) -> None:
+        """Can also query using string representation."""
+        user_id = UserIdFactory()
+
+        with Session(self.engine) as session:
+            session.add(User(id=user_id, name="Eve"))
+            session.commit()
+
+            row = session.execute(select(User).where(User.id == str(user_id))).scalar_one()
+            assert row.name == "Eve"
+
+    def test_preserves_datetime(self) -> None:
+        """UPLID datetime is preserved through database roundtrip."""
+        user_id = UserIdFactory()
+        original_datetime = user_id.datetime
+
+        with Session(self.engine) as session:
+            session.add(User(id=user_id, name="Frank"))
+            session.commit()
+
+            row = session.execute(select(User)).scalar_one()
+            assert row.id.datetime == original_datetime
+
+    def test_ordering_matches_creation_order(self) -> None:
+        """UUIDv7-based IDs sort chronologically."""
         ids = [UserIdFactory() for _ in range(5)]
 
         with Session(self.engine) as session:
             for i, uid in enumerate(ids):
-                session.add(UserRow(id=str(uid), name=f"User{i}"))
+                session.add(User(id=uid, name=f"User{i}"))
             session.commit()
 
-            # Query ordered by ID
-            rows = session.execute(select(UserRow).order_by(UserRow.id)).scalars().all()
-
-            # String ordering of base62 UUIDv7 preserves chronological order
-            retrieved_ids = [UPLID.from_string(r.id, "usr") for r in rows]
+            rows = session.execute(select(User).order_by(User.id)).scalars().all()
+            retrieved_ids = [r.id for r in rows]
             assert retrieved_ids == ids
 
-    def test_max_prefix_length_fits_in_column(self) -> None:
-        # Max prefix is 64 chars, total ID is 64 + 1 + 22 = 87 chars
-        long_prefix = "a" * 64
-        uid = UPLID.generate(long_prefix)
-        assert len(str(uid)) == 87
+    def test_filter_by_org(self) -> None:
+        """Can filter by foreign key UPLID."""
+        org1 = OrgIdFactory()
+        org2 = OrgIdFactory()
 
-        # This should fit in String(87)
         with Session(self.engine) as session:
-            session.add(UserRow(id=str(uid), name="LongPrefix"))
+            session.add(User(id=UserIdFactory(), name="Alice", org_id=org1))
+            session.add(User(id=UserIdFactory(), name="Bob", org_id=org1))
+            session.add(User(id=UserIdFactory(), name="Charlie", org_id=org2))
             session.commit()
 
-            row = session.execute(select(UserRow)).scalar_one()
-            parsed = UPLID.from_string(row.id, long_prefix)
-            assert parsed == uid
+            org1_users = session.execute(select(User).where(User.org_id == org1)).scalars().all()
+            assert len(org1_users) == 2
+            assert {u.name for u in org1_users} == {"Alice", "Bob"}
+
+
+class TestUPLIDType:
+    """Test the UPLIDType TypeDecorator directly."""
+
+    def setup_method(self) -> None:
+        self.engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(self.engine)
+
+    def test_accepts_string_input(self) -> None:
+        """UPLIDType accepts string input and converts to UPLID on read."""
+        user_id = UserIdFactory()
+
+        with Session(self.engine) as session:
+            # Pass string instead of UPLID
+            user = User(id=str(user_id), name="Test")
+            session.add(user)
+            session.commit()
+
+            row = session.execute(select(User)).scalar_one()
+            assert isinstance(row.id, UPLID)
+            assert row.id == user_id
+
+
+class TestUplitColumnErrors:
+    """Test error handling in uplid_column."""
+
+    def test_rejects_unparameterized_type(self) -> None:
+        """uplid_column requires a parameterized UPLID type."""
+        with pytest.raises(TypeError, match="must be parameterized"):
+            uplid_column(UPLID)
 
 
 class TestSQLAlchemyTransactions:
+    """Test transaction behavior with UPLID columns."""
+
     def setup_method(self) -> None:
         self.engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(self.engine)
@@ -129,25 +184,21 @@ class TestSQLAlchemyTransactions:
         user_id = UserIdFactory()
 
         with Session(self.engine) as session:
-            session.add(UserRow(id=str(user_id), name="Rollback"))
+            session.add(User(id=user_id, name="Rollback"))
             session.rollback()
 
         with Session(self.engine) as session:
-            count = session.execute(select(UserRow)).scalars().all()
+            count = session.execute(select(User)).scalars().all()
             assert len(count) == 0
 
     def test_unique_constraint_on_duplicate_id(self) -> None:
         user_id = UserIdFactory()
 
         with Session(self.engine) as session:
-            session.add(UserRow(id=str(user_id), name="First"))
+            session.add(User(id=user_id, name="First"))
             session.commit()
 
-        # Attempting to insert duplicate should raise
-        import pytest
-        import sqlalchemy.exc
-
         with Session(self.engine) as session:
-            session.add(UserRow(id=str(user_id), name="Duplicate"))
+            session.add(User(id=user_id, name="Duplicate"))
             with pytest.raises(sqlalchemy.exc.IntegrityError):
                 session.commit()

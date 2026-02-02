@@ -135,24 +135,50 @@ def update_user(
     ...
 ```
 
-## SQLAlchemy Storage
+## SQLAlchemy Integration
 
-Store as VARCHAR(87): 64 (max prefix) + 1 (underscore) + 22 (base62).
+Use `uplid_column` for typed columns with automatic serialization:
 
 ```python
-from sqlalchemy import String
-from sqlalchemy.orm import Mapped, mapped_column
+from uplid.sqlalchemy import uplid_column
 
-class UserRow(Base):
-    id: Mapped[str] = mapped_column(String(87), primary_key=True)
+UserId = UPLID[Literal["usr"]]
+OrgId = UPLID[Literal["org"]]
 
-# Store
-user = UserRow(id=str(UPLID.generate("usr")), name="Alice")
+class User(Base):
+    __tablename__ = "users"
 
-# Retrieve and parse
-row = session.query(UserRow).first()
-uid = UPLID.from_string(row.id, "usr")
-print(uid.datetime)  # When ID was created
+    id: Mapped[UserId] = uplid_column(UserId, primary_key=True)
+    org_id: Mapped[OrgId | None] = uplid_column(OrgId)
+
+# Assign UPLID directly
+user = User(id=UserIdFactory(), name="Alice")
+session.add(user)
+
+# Returns UPLID objects, not strings
+row = session.execute(select(User)).scalar_one()
+row.id.prefix    # "usr"
+row.id.datetime  # When created
+
+# Query with UPLID or string
+session.execute(select(User).where(User.id == user_id))
+```
+
+## SQLModel Integration
+
+Use `uplid_field` for SQLModel:
+
+```python
+from sqlmodel import SQLModel
+from uplid.sqlalchemy import uplid_field
+
+class User(SQLModel, table=True):
+    id: UserId = uplid_field(UserId, default_factory=UserIdFactory, primary_key=True)
+    name: str
+
+# Pydantic + SQLAlchemy both work
+user.model_dump()  # {"id": "usr_...", "name": "..."}
+session.exec(select(User)).first().id.prefix  # "usr"
 ```
 
 ## UPLIDType Protocol
