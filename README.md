@@ -158,17 +158,19 @@ def get_session(user_id: Annotated[UserId, Depends(get_session_user)]) -> User:
     ...
 ```
 
-## Database Storage
+## SQLAlchemy Integration
 
-UPLIDs serialize to strings. Store as `VARCHAR(87)` (64 char prefix + 1 underscore + 22 char base62):
+Use `uplid_column` for typed UPLID columns with automatic serialization:
 
 ```python
 from typing import Literal
-from sqlalchemy import String, create_engine
+from sqlalchemy import String, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session
 from uplid import UPLID, factory
+from uplid.sqlalchemy import uplid_column
 
 UserId = UPLID[Literal["usr"]]
+OrgId = UPLID[Literal["org"]]
 UserIdFactory = factory(UserId)
 
 
@@ -176,26 +178,67 @@ class Base(DeclarativeBase):
     pass
 
 
-class UserRow(Base):
+class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[str] = mapped_column(String(87), primary_key=True)
+    # Columns typed as UPLID, stored as TEXT, auto-serialized
+    id: Mapped[UserId] = uplid_column(UserId, primary_key=True)
+    org_id: Mapped[OrgId | None] = uplid_column(OrgId)
     name: Mapped[str] = mapped_column(String(100))
 
 
-# Create with UPLID, store as string
 engine = create_engine("sqlite:///:memory:")
 Base.metadata.create_all(engine)
 
 with Session(engine) as session:
-    user = UserRow(id=str(UPLID.generate("usr")), name="Alice")
+    # Assign UPLID directly - no str() needed
+    user = User(id=UserIdFactory(), name="Alice")
     session.add(user)
     session.commit()
 
-    # Query and parse back to UPLID
-    row = session.query(UserRow).first()
-    user_id = UPLID.from_string(row.id, "usr")
-    print(user_id.datetime)  # When the ID was created
+    # Returns UPLID objects, not strings
+    row = session.execute(select(User)).scalar_one()
+    print(row.id.prefix)    # "usr"
+    print(row.id.datetime)  # When the ID was created
+
+    # Query with UPLID or string
+    session.execute(select(User).where(User.id == user.id))
+```
+
+## SQLModel Integration
+
+Use `uplid_field` for SQLModel models:
+
+```python
+from typing import Literal
+from sqlmodel import SQLModel, Session, select
+from sqlalchemy import create_engine
+from uplid import UPLID, factory
+from uplid.sqlalchemy import uplid_field
+
+UserId = UPLID[Literal["usr"]]
+UserIdFactory = factory(UserId)
+
+
+class User(SQLModel, table=True):
+    id: UserId = uplid_field(UserId, default_factory=UserIdFactory, primary_key=True)
+    name: str
+
+
+engine = create_engine("sqlite:///:memory:")
+SQLModel.metadata.create_all(engine)
+
+with Session(engine) as session:
+    user = User(name="Alice")
+    session.add(user)
+    session.commit()
+
+    # Pydantic serialization works
+    print(user.model_dump())  # {"id": "usr_...", "name": "Alice"}
+
+    # Database queries return UPLID objects
+    row = session.exec(select(User)).first()
+    print(row.id.prefix)  # "usr"
 ```
 
 ## Prefix Rules
@@ -269,6 +312,32 @@ def log_entity(id: UPLIDType) -> None:
 ### `UPLIDError`
 
 Exception raised for invalid IDs. Subclasses `ValueError`.
+
+### `uplid_column(UPLIDType, **kwargs)` (from `uplid.sqlalchemy`)
+
+Creates a SQLAlchemy `mapped_column` for a UPLID type with automatic serialization.
+
+```python
+from uplid.sqlalchemy import uplid_column
+
+UserId = UPLID[Literal["usr"]]
+
+class User(Base):
+    id: Mapped[UserId] = uplid_column(UserId, primary_key=True)
+```
+
+### `uplid_field(UPLIDType, **kwargs)` (from `uplid.sqlalchemy`)
+
+Creates a SQLModel `Field` for a UPLID type with automatic serialization.
+
+```python
+from uplid.sqlalchemy import uplid_field
+
+UserId = UPLID[Literal["usr"]]
+
+class User(SQLModel, table=True):
+    id: UserId = uplid_field(UserId, default_factory=UserIdFactory, primary_key=True)
+```
 
 ## License
 
