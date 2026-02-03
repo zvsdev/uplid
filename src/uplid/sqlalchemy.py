@@ -95,7 +95,8 @@ class UPLIDColumn(TypeDecorator[UPLIDType]):
         # Validate string format and prefix before storing
         if isinstance(value, str):
             UPLID.from_string(value, self.prefix)  # Raises UPLIDError if invalid
-        return value
+            return value
+        return value  # pragma: no cover
 
     def process_result_value(
         self,
