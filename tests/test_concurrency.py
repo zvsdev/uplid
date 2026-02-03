@@ -6,11 +6,9 @@ import threading
 from collections import Counter
 from typing import Literal
 
-from uplid import UPLID, factory
+from uplid import UPLID
 
-
-UserId = UPLID[Literal["usr"]]
-UserIdFactory = factory(UserId)
+from .conftest import UserIdFactory
 
 
 class TestConcurrentGeneration:
