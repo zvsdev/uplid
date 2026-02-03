@@ -69,7 +69,7 @@ get_user(org_id)  # Type error! Caught by mypy/pyright/ty
 
 **URL-safe** - 26 characters, no special characters, no encoding. `usr_0M3xL9kQ7vR2nP5wY1jZ4c`
 
-**Zero external dependencies** - Just Python 3.14's stdlib `uuid7()` + Pydantic.
+**Minimal dependencies** - Just Pydantic. UUID generation uses Python 3.14's stdlib `uuid7()`.
 
 > Inspired by Stripe's prefixed IDs (`sk_live_...`, `cus_...`, `pi_...`) - the same pattern trusted by millions of API calls daily.
 
