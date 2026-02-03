@@ -25,13 +25,13 @@ Example:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, TypedDict, Unpack, cast, get_args
+from typing import TYPE_CHECKING, Any, TypedDict, Unpack, cast
 
 from sqlalchemy import Text
 from sqlalchemy.orm import mapped_column
 from sqlalchemy.types import TypeDecorator
 
-from uplid import UPLID, UPLIDType
+from uplid import UPLID, UPLIDError, UPLIDType, _get_prefix
 
 
 if TYPE_CHECKING:
@@ -80,12 +80,23 @@ class UPLIDColumn(TypeDecorator[UPLIDType]):
         value: UPLIDType | str | None,
         dialect: Dialect,  # noqa: ARG002
     ) -> str | None:
-        """Convert UPLID to string for database storage."""
+        """Convert UPLID to string for database storage.
+
+        Validates that strings have the correct prefix before storing.
+        This catches prefix mismatches at write time rather than read time.
+        """
         if value is None:
             return None
         if isinstance(value, UPLIDType):
+            if value.prefix != self.prefix:
+                msg = f"Expected prefix {self.prefix!r}, got {value.prefix!r}"
+                raise ValueError(msg)
             return str(value)
-        return value
+        # Validate string format and prefix before storing
+        if isinstance(value, str):
+            UPLID.from_string(value, self.prefix)  # Raises UPLIDError if invalid
+            return value
+        return value  # pragma: no cover
 
     def process_result_value(
         self,
@@ -99,18 +110,14 @@ class UPLIDColumn(TypeDecorator[UPLIDType]):
 
 
 def _extract_prefix[T](uplid_type: type[T]) -> str:
-    """Extract prefix from a parameterized UPLID type like UPLID[Literal["usr"]]."""
-    type_args = get_args(uplid_type)
-    if not type_args:
-        msg = f"UPLID type must be parameterized, got {uplid_type}"
-        raise TypeError(msg)
+    """Extract prefix from a parameterized UPLID type like UPLID[Literal["usr"]].
 
-    literal_args = get_args(type_args[0])
-    if not literal_args:
-        msg = f"Could not extract prefix from {uplid_type}"
-        raise TypeError(msg)
-
-    return literal_args[0]
+    Wraps _get_prefix to convert UPLIDError to TypeError for SQLAlchemy context.
+    """
+    try:
+        return _get_prefix(uplid_type)  # type: ignore[arg-type]
+    except UPLIDError as e:
+        raise TypeError(str(e)) from e
 
 
 def uplid_column[T](
@@ -151,6 +158,7 @@ class UPLIDFieldKwargs(TypedDict, total=False):
     default: object
     default_factory: Callable[[], object]
     primary_key: bool
+    nullable: bool
     index: bool
     unique: bool
 

@@ -1,14 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal
+from uplid import UPLIDError, UPLIDType
 
-from uplid import UPLID, UPLIDError, UPLIDType, factory
-
-
-UserId = UPLID[Literal["usr"]]
-ApiKeyId = UPLID[Literal["api_key"]]
-UserIdFactory = factory(UserId)
-ApiKeyIdFactory = factory(ApiKeyId)
+from .conftest import ApiKeyIdFactory, UserIdFactory
 
 
 class TestUPLIDError:

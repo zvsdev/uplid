@@ -234,24 +234,28 @@ class UPLID[PREFIX: LiteralString]:
     def __lt__(self, other: object) -> bool:
         """Compare for sorting (by prefix, then by uid)."""
         if isinstance(other, UPLID):
+            # type: ignore needed because UUID comparison is not recognized by type checkers
             return (self._prefix, self._uid) < (other._prefix, other._uid)  # type: ignore[operator]
         return NotImplemented
 
     def __le__(self, other: object) -> bool:
         """Compare for sorting (by prefix, then by uid)."""
         if isinstance(other, UPLID):
+            # type: ignore needed because UUID comparison is not recognized by type checkers
             return (self._prefix, self._uid) <= (other._prefix, other._uid)  # type: ignore[operator]
         return NotImplemented
 
     def __gt__(self, other: object) -> bool:
         """Compare for sorting (by prefix, then by uid)."""
         if isinstance(other, UPLID):
+            # type: ignore needed because UUID comparison is not recognized by type checkers
             return (self._prefix, self._uid) > (other._prefix, other._uid)  # type: ignore[operator]
         return NotImplemented
 
     def __ge__(self, other: object) -> bool:
         """Compare for sorting (by prefix, then by uid)."""
         if isinstance(other, UPLID):
+            # type: ignore needed because UUID comparison is not recognized by type checkers
             return (self._prefix, self._uid) >= (other._prefix, other._uid)  # type: ignore[operator]
         return NotImplemented
 
@@ -282,6 +286,14 @@ class UPLID[PREFIX: LiteralString]:
             UPLIDError: If the prefix is not valid snake_case.
         """
         _validate_prefix(prefix)
+        return cls._generate_unchecked(prefix)
+
+    @classmethod
+    def _generate_unchecked(cls, prefix: PREFIX) -> Self:
+        """Generate a new UPLID without validating the prefix.
+
+        Internal method for use when prefix has already been validated.
+        """
         instance = cls.__new__(cls)
         instance._prefix = prefix  # noqa: SLF001
         instance._uid = uuid7()  # noqa: SLF001
@@ -421,9 +433,10 @@ def factory[PREFIX: LiteralString](
             id: UserId = Field(default_factory=factory(UserId))
     """
     prefix = _get_prefix(uplid_type)
+    _validate_prefix(prefix)  # Validate once at factory creation
 
     def _factory() -> UPLID[PREFIX]:
-        return UPLID.generate(prefix)
+        return UPLID._generate_unchecked(prefix)  # noqa: SLF001
 
     return _factory
 

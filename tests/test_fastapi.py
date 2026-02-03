@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated
 
+import pytest
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Query
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, Field
 
-from uplid import UPLID, UPLIDError, factory, parse
+from uplid import UPLIDError, parse
+
+from .conftest import OrgId, OrgIdFactory, UserId, UserIdFactory
 
 
-UserId = UPLID[Literal["usr"]]
-OrgId = UPLID[Literal["org"]]
-UserIdFactory = factory(UserId)
-OrgIdFactory = factory(OrgId)
 parse_user_id = parse(UserId)
 parse_org_id = parse(OrgId)
 
@@ -117,10 +116,15 @@ def get_session(
 client = TestClient(app)
 
 
-class TestFastAPIPathParams:
-    def setup_method(self) -> None:
-        users.clear()
+@pytest.fixture(autouse=True)
+def clear_users():
+    """Clear users dict before each test."""
+    users.clear()
+    yield
+    users.clear()
 
+
+class TestFastAPIPathParams:
     def test_valid_user_id_in_path(self) -> None:
         # Create a user first
         response = client.post("/users?name=Alice")
@@ -148,9 +152,6 @@ class TestFastAPIPathParams:
 
 
 class TestFastAPIQueryParams:
-    def setup_method(self) -> None:
-        users.clear()
-
     def test_filter_by_org_id(self) -> None:
         org1 = OrgIdFactory()
         org2 = OrgIdFactory()
@@ -176,9 +177,6 @@ class TestFastAPIQueryParams:
 
 
 class TestFastAPIRequestBody:
-    def setup_method(self) -> None:
-        users.clear()
-
     def test_user_creation_generates_id(self) -> None:
         response = client.post("/users?name=Alice")
         assert response.status_code == 200
@@ -195,9 +193,6 @@ class TestFastAPIRequestBody:
 
 
 class TestFastAPIRoundtrip:
-    def setup_method(self) -> None:
-        users.clear()
-
     def test_create_and_fetch_preserves_id(self) -> None:
         # Create
         create_response = client.post("/users?name=Alice")
@@ -213,9 +208,6 @@ class TestFastAPIRoundtrip:
 
 class TestFastAPIJsonBody:
     """Test UPLID validation in JSON request bodies."""
-
-    def setup_method(self) -> None:
-        users.clear()
 
     def test_valid_uplid_in_json_body(self) -> None:
         """FastAPI validates UPLID in JSON body via Pydantic."""
@@ -364,9 +356,6 @@ class TestPydanticSerialization:
 class TestFastAPIHeaders:
     """Test UPLID validation in HTTP headers."""
 
-    def setup_method(self) -> None:
-        users.clear()
-
     def test_valid_user_id_in_header(self) -> None:
         """Valid UPLID in X-User-Id header is accepted."""
         # Create a user first
@@ -403,9 +392,6 @@ class TestFastAPIHeaders:
 
 class TestFastAPICookies:
     """Test UPLID validation in cookies."""
-
-    def setup_method(self) -> None:
-        users.clear()
 
     def test_valid_user_id_in_cookie(self) -> None:
         """Valid UPLID in session cookie is accepted."""

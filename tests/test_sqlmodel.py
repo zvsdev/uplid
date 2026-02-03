@@ -2,20 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import create_engine
 from sqlmodel import Session, SQLModel, select
 
-from uplid import UPLID, factory
+from uplid import UPLID
 from uplid.sqlalchemy import uplid_field
 
-
-UserId = UPLID[Literal["usr"]]
-OrgId = UPLID[Literal["org"]]
-UserIdFactory = factory(UserId)
-OrgIdFactory = factory(OrgId)
+from .conftest import OrgId, OrgIdFactory, UserId, UserIdFactory
 
 
 class User(SQLModel, table=True):
@@ -23,22 +18,26 @@ class User(SQLModel, table=True):
 
     __tablename__ = "sqlmodel_users"
 
-    # Using uplid_field - no prefix duplication!
     id: UserId = uplid_field(UserId, default_factory=UserIdFactory, primary_key=True)
     name: str
     org_id: OrgId | None = uplid_field(OrgId, default=None)
 
 
+@pytest.fixture
+def engine():
+    """Create a fresh in-memory SQLite engine for SQLModel."""
+    eng = create_engine("sqlite:///:memory:")
+    SQLModel.metadata.create_all(eng)
+    yield eng
+    eng.dispose()
+
+
 class TestSQLModelBasics:
     """Test basic SQLModel + UPLID functionality."""
 
-    def setup_method(self) -> None:
-        self.engine = create_engine("sqlite:///:memory:")
-        SQLModel.metadata.create_all(self.engine)
-
-    def test_create_and_retrieve(self) -> None:
+    def test_create_and_retrieve(self, engine) -> None:
         """Test creating and retrieving a user with UPLID."""
-        with Session(self.engine) as session:
+        with Session(engine) as session:
             user = User(name="Alice")
             session.add(user)
             session.commit()
@@ -54,12 +53,12 @@ class TestSQLModelBasics:
             assert isinstance(row.id, UPLID)
             assert row.id == user.id
 
-    def test_assign_uplid_directly(self) -> None:
+    def test_assign_uplid_directly(self, engine) -> None:
         """Test assigning UPLID directly."""
         user_id = UserIdFactory()
         org_id = OrgIdFactory()
 
-        with Session(self.engine) as session:
+        with Session(engine) as session:
             user = User(id=user_id, name="Bob", org_id=org_id)
             session.add(user)
             session.commit()
@@ -69,11 +68,11 @@ class TestSQLModelBasics:
             assert row.id == user_id
             assert row.org_id == org_id
 
-    def test_query_by_uplid(self) -> None:
+    def test_query_by_uplid(self, engine) -> None:
         """Test querying by UPLID."""
         user_id = UserIdFactory()
 
-        with Session(self.engine) as session:
+        with Session(engine) as session:
             session.add(User(id=user_id, name="Charlie"))
             session.commit()
 
@@ -108,16 +107,14 @@ class TestSQLModelBasics:
 
     def test_wrong_prefix_rejected(self) -> None:
         """Test that wrong prefix is rejected by Pydantic."""
-        from pydantic import ValidationError
-
         org_id = OrgIdFactory()  # Wrong prefix for id field
 
         with pytest.raises(ValidationError):
             User.model_validate({"id": str(org_id), "name": "Bad"})
 
-    def test_nullable_field(self) -> None:
+    def test_nullable_field(self, engine) -> None:
         """Test nullable UPLID field."""
-        with Session(self.engine) as session:
+        with Session(engine) as session:
             user = User(name="Frank", org_id=None)
             session.add(user)
             session.commit()
@@ -126,12 +123,12 @@ class TestSQLModelBasics:
             assert row is not None
             assert row.org_id is None
 
-    def test_roundtrip_preserves_datetime(self) -> None:
+    def test_roundtrip_preserves_datetime(self, engine) -> None:
         """Test that datetime is preserved through DB roundtrip."""
         user_id = UserIdFactory()
         original_dt = user_id.datetime
 
-        with Session(self.engine) as session:
+        with Session(engine) as session:
             session.add(User(id=user_id, name="Grace"))
             session.commit()
 

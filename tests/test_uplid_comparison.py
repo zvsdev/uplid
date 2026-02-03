@@ -1,18 +1,13 @@
 from __future__ import annotations
 
-from typing import Literal
 from uuid import UUID, uuid7
 
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from uplid import UPLID, factory
+from uplid import UPLID
 
-from .conftest import prefix_strategy
-
-
-UserId = UPLID[Literal["usr"]]
-UserIdFactory = factory(UserId)
+from .conftest import UserIdFactory, prefix_strategy
 
 
 class TestUPLIDEquality:

@@ -1,18 +1,11 @@
 from __future__ import annotations
 
-from typing import Literal
-
 import pytest
 from pydantic import BaseModel, Field, ValidationError
 
 from uplid import UPLID, UPLIDError, factory
 
-
-UserId = UPLID[Literal["usr"]]
-OrgId = UPLID[Literal["org"]]
-ApiKeyId = UPLID[Literal["api_key"]]
-UserIdFactory = factory(UserId)
-OrgIdFactory = factory(OrgId)
+from .conftest import ApiKeyId, OrgIdFactory, UserId, UserIdFactory
 
 
 class TestPydanticValidation:
@@ -57,7 +50,7 @@ class TestPydanticValidation:
 
     def test_works_with_default_factory(self) -> None:
         class User(BaseModel):
-            id: UserId = Field(default_factory=factory(UserId))
+            id: UserId = Field(default_factory=UserIdFactory)
 
         user = User()
         assert user.id.prefix == "usr"
@@ -66,7 +59,7 @@ class TestPydanticValidation:
 class TestPydanticSerialization:
     def test_serializes_to_string_in_dict(self) -> None:
         class User(BaseModel):
-            id: UserId = Field(default_factory=factory(UserId))
+            id: UserId = Field(default_factory=UserIdFactory)
 
         user = User()
         data = user.model_dump()
@@ -75,7 +68,7 @@ class TestPydanticSerialization:
 
     def test_serializes_to_string_in_json(self) -> None:
         class User(BaseModel):
-            id: UserId = Field(default_factory=factory(UserId))
+            id: UserId = Field(default_factory=UserIdFactory)
 
         user = User()
         json_str = user.model_dump_json()
@@ -83,7 +76,7 @@ class TestPydanticSerialization:
 
     def test_roundtrip_model_dump(self) -> None:
         class User(BaseModel):
-            id: UserId = Field(default_factory=factory(UserId))
+            id: UserId = Field(default_factory=UserIdFactory)
 
         user = User()
         data = user.model_dump()
@@ -92,7 +85,7 @@ class TestPydanticSerialization:
 
     def test_roundtrip_json(self) -> None:
         class User(BaseModel):
-            id: UserId = Field(default_factory=factory(UserId))
+            id: UserId = Field(default_factory=UserIdFactory)
 
         user = User()
         json_str = user.model_dump_json()

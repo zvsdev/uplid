@@ -1,6 +1,6 @@
 [project]
 name = "uplid"
-version = "1.0.2"
+version = "1.1.0"
 description = "Universal Prefixed Literal IDs - type-safe, human-readable identifiers"
 authors = [{ name = "ZVS", email = "zvs@daswolf.dev" }]
 readme = "README.md"
@@ -73,7 +73,7 @@ python-version = "3.14"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["--cov=uplid", "--cov-report=term-missing", "--cov-fail-under=95"]
+addopts = ["--cov=uplid", "--cov-report=term-missing", "--cov-fail-under=100"]
 
 [tool.coverage.run]
 branch = true

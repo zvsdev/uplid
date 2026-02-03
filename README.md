@@ -1,27 +1,33 @@
 # UPLID
 
-Universal Prefixed Literal IDs - type-safe, human-readable identifiers for Python 3.14+.
+```
+██╗   ██╗██████╗ ██╗     ██╗██████╗
+██║   ██║██╔══██╗██║     ██║██╔══██╗
+██║   ██║██████╔╝██║     ██║██║  ██║
+██║   ██║██╔═══╝ ██║     ██║██║  ██║
+╚██████╔╝██║     ███████╗██║██████╔╝
+ ╚═════╝ ╚═╝     ╚══════╝╚═╝╚═════╝
+```
+
+**Stripe-style IDs for Python.**
+
+```python
+# Before: WTF is this?
+"550e8400-e29b-41d4-a716-446655440000"
+
+# After: It's a user.
+"usr_0M3xL9kQ7vR2nP5wY1jZ4c"
+```
 
 [![CI](https://github.com/zvsdev/uplid/actions/workflows/ci.yml/badge.svg)](https://github.com/zvsdev/uplid/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/uplid)](https://pypi.org/project/uplid/)
 [![Python](https://img.shields.io/pypi/pyversions/uplid)](https://pypi.org/project/uplid/)
+[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/zvsdev/uplid)
 
-## Features
-
-- **Type-safe prefixes**: `UPLID[Literal["usr"]]` prevents mixing user IDs with org IDs at compile time
-- **Human-readable**: `usr_0M3xL9kQ7vR2nP5wY1jZ4c` (Stripe-style prefixed IDs)
-- **Time-sortable**: Built on UUIDv7 (RFC 9562) for natural chronological ordering
-- **Compact**: 22-character base62 encoding (URL-safe, no special characters)
-- **Stdlib UUIDs**: Uses Python 3.14's native `uuid7()` - no external UUID libraries
-- **Pydantic 2 native**: Full validation and serialization support
-- **Thread-safe**: ID generation is safe for concurrent use
-
-## Installation
+## Install
 
 ```bash
 pip install uplid
-# or
-uv add uplid
 ```
 
 Requires Python 3.14+ and Pydantic 2.10+.
@@ -29,314 +35,166 @@ Requires Python 3.14+ and Pydantic 2.10+.
 ## Quick Start
 
 ```python
+>>> from uplid import UPLID
+>>> UPLID.generate("usr")
+usr_0M3xL9kQ7vR2nP5wY1jZ4c
+>>> UPLID.generate("ord")
+ord_7x9KmNpQrStUvWxYz012Ab
+```
+
+## Why UPLID?
+
+**Debuggable** - See `usr_` in your logs and instantly know it's a user, not an order, not a session, not a mystery.
+
+```
+# Your logs now:
+"User usr_0M3xL9kQ7vR2nP5wY1jZ4c created order ord_1a2B3c4D5e6F7g..."
+
+# vs the nightmare:
+"User 550e8400-e29b-41d4... created order 7c9e6679-7425-40de..."
+```
+
+**Type-safe** - Your type checker catches `user_id = order_id` mistakes before they hit production.
+
+```python
+UserId = UPLID[Literal["usr"]]
+OrgId = UPLID[Literal["org"]]
+
+def get_user(user_id: UserId) -> User: ...
+
+get_user(org_id)  # Type error! Caught by mypy/pyright/ty
+```
+
+**Time-sortable** - Built on UUIDv7. Sort by ID = sort by creation time. No extra column needed.
+
+**URL-safe** - 26 characters, no special characters, no encoding. `usr_0M3xL9kQ7vR2nP5wY1jZ4c`
+
+**Minimal dependencies** - Just Pydantic. UUID generation uses Python 3.14's stdlib `uuid7()`.
+
+> Inspired by Stripe's prefixed IDs (`sk_live_...`, `cus_...`, `pi_...`) - the same pattern trusted by millions of API calls daily.
+
+## Pydantic Integration
+
+```python
 from typing import Literal
 from pydantic import BaseModel, Field
 from uplid import UPLID, factory
 
-# Define typed aliases and factories
 UserId = UPLID[Literal["usr"]]
-OrgId = UPLID[Literal["org"]]
-UserIdFactory = factory(UserId)
-
-# Use in Pydantic models
-class User(BaseModel):
-    id: UserId = Field(default_factory=UserIdFactory)
-    org_id: OrgId
-
-# Generate IDs
-user_id = UPLID.generate("usr")
-print(user_id)  # usr_0M3xL9kQ7vR2nP5wY1jZ4c
-
-# Parse from string
-parsed = UPLID.from_string("usr_0M3xL9kQ7vR2nP5wY1jZ4c", "usr")
-
-# Access properties
-print(parsed.datetime)   # 2026-01-30 12:34:56.789000+00:00
-print(parsed.timestamp)  # 1738240496.789
-
-# Type safety - these are compile-time errors:
-# user.org_id = user_id  # Error: UserId is not compatible with OrgId
-```
-
-## Pydantic Serialization
-
-UPLIDs serialize to strings and deserialize with validation:
-
-```python
-from pydantic import BaseModel, Field
-from uplid import UPLID, factory
-
-UserId = UPLID[Literal["usr"]]
-UserIdFactory = factory(UserId)
 
 class User(BaseModel):
-    id: UserId = Field(default_factory=UserIdFactory)
+    id: UserId = Field(default_factory=factory(UserId))
     name: str
 
 user = User(name="Alice")
+user.model_dump()  # {"id": "usr_0M3xL9kQ7vR2nP5wY1jZ4c", "name": "Alice"}
 
-# Serialize to dict - ID becomes string
-user.model_dump()
-# {"id": "usr_0M3xL9kQ7vR2nP5wY1jZ4c", "name": "Alice"}
-
-# Serialize to JSON
-json_str = user.model_dump_json()
-
-# Deserialize - validates UPLID format and prefix
-restored = User.model_validate_json(json_str)
-assert restored.id == user.id
-
-# Wrong prefix raises ValidationError
-User(id="org_xxx...", name="Bad")  # ValidationError
+User(id="org_xxx...", name="Bad")  # ValidationError: wrong prefix
 ```
 
 ## FastAPI Integration
 
 ```python
 from typing import Annotated, Literal
-from fastapi import Cookie, Depends, FastAPI, Header, HTTPException
-from pydantic import BaseModel, Field
-from uplid import UPLID, UPLIDError, factory, parse
+from fastapi import Depends, FastAPI, HTTPException
+from uplid import UPLID, UPLIDError, parse
 
 UserId = UPLID[Literal["usr"]]
-UserIdFactory = factory(UserId)
 parse_user_id = parse(UserId)
 
-
-class User(BaseModel):
-    id: UserId = Field(default_factory=UserIdFactory)
-    name: str
-
-
-app = FastAPI()
-
-
-# Dependency for validating path/query/header/cookie parameters
-def get_user_id(user_id: str) -> UserId:
+def validate_user_id(user_id: str) -> UserId:
     try:
         return parse_user_id(user_id)
     except UPLIDError as e:
-        raise HTTPException(422, f"Invalid user ID: {e}") from None
+        raise HTTPException(422, str(e)) from None
 
-
-# Path parameter validation
 @app.get("/users/{user_id}")
-def get_user(user_id: Annotated[UserId, Depends(get_user_id)]) -> User:
-    ...
-
-
-# JSON body - Pydantic validates UPLID fields automatically
-@app.post("/users")
-def create_user(user: User) -> User:
-    # user.id validated as UserId, wrong prefix returns 422
-    return user
-
-
-# Header validation
-def get_user_id_from_header(x_user_id: Annotated[str, Header()]) -> UserId:
-    try:
-        return parse_user_id(x_user_id)
-    except UPLIDError as e:
-        raise HTTPException(422, f"Invalid X-User-Id header: {e}") from None
-
-
-@app.get("/me")
-def get_current_user(user_id: Annotated[UserId, Depends(get_user_id_from_header)]) -> User:
-    ...
-
-
-# Cookie validation
-def get_session_user(session_user_id: Annotated[str, Cookie()]) -> UserId:
-    try:
-        return parse_user_id(session_user_id)
-    except UPLIDError as e:
-        raise HTTPException(422, f"Invalid session cookie: {e}") from None
-
-
-@app.get("/session")
-def get_session(user_id: Annotated[UserId, Depends(get_session_user)]) -> User:
-    ...
+def get_user(user_id: Annotated[UserId, Depends(validate_user_id)]) -> User:
+    ...  # user_id is validated and typed
 ```
 
 ## SQLAlchemy Integration
 
-Use `uplid_column` for typed UPLID columns with automatic serialization:
-
 ```python
-from typing import Literal
-from sqlalchemy import String, create_engine, select
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session
 from uplid import UPLID, factory
 from uplid.sqlalchemy import uplid_column
 
 UserId = UPLID[Literal["usr"]]
-OrgId = UPLID[Literal["org"]]
-UserIdFactory = factory(UserId)
-
-
-class Base(DeclarativeBase):
-    pass
-
 
 class User(Base):
     __tablename__ = "users"
-
-    # Columns typed as UPLID, stored as TEXT, auto-serialized
     id: Mapped[UserId] = uplid_column(UserId, primary_key=True)
-    org_id: Mapped[OrgId | None] = uplid_column(OrgId)
-    name: Mapped[str] = mapped_column(String(100))
+    name: Mapped[str]
 
-
-engine = create_engine("sqlite:///:memory:")
-Base.metadata.create_all(engine)
-
-with Session(engine) as session:
-    # Assign UPLID directly - no str() needed
-    user = User(id=UserIdFactory(), name="Alice")
-    session.add(user)
-    session.commit()
-
-    # Returns UPLID objects, not strings
-    row = session.execute(select(User)).scalar_one()
-    print(row.id.prefix)    # "usr"
-    print(row.id.datetime)  # When the ID was created
-
-    # Query with UPLID or string
-    session.execute(select(User).where(User.id == user.id))
+# Stores as TEXT, returns as UPLID objects
+user = session.execute(select(User)).scalar_one()
+user.id.prefix    # "usr"
+user.id.datetime  # When the ID was created
 ```
 
 ## SQLModel Integration
 
-Use `uplid_field` for SQLModel models:
-
 ```python
-from typing import Literal
-from sqlmodel import SQLModel, Session, select
-from sqlalchemy import create_engine
 from uplid import UPLID, factory
 from uplid.sqlalchemy import uplid_field
 
 UserId = UPLID[Literal["usr"]]
-UserIdFactory = factory(UserId)
-
 
 class User(SQLModel, table=True):
-    id: UserId = uplid_field(UserId, default_factory=UserIdFactory, primary_key=True)
+    id: UserId = uplid_field(UserId, default_factory=factory(UserId), primary_key=True)
     name: str
 
-
-engine = create_engine("sqlite:///:memory:")
-SQLModel.metadata.create_all(engine)
-
-with Session(engine) as session:
-    user = User(name="Alice")
-    session.add(user)
-    session.commit()
-
-    # Pydantic serialization works
-    print(user.model_dump())  # {"id": "usr_...", "name": "Alice"}
-
-    # Database queries return UPLID objects
-    row = session.exec(select(User)).first()
-    print(row.id.prefix)  # "usr"
+user.model_dump()  # {"id": "usr_...", "name": "Alice"} - Pydantic just works
 ```
 
 ## Prefix Rules
 
-Prefixes must be snake_case:
-- Lowercase letters and single underscores only
-- Cannot start or end with underscore
-- Maximum 64 characters
-- Examples: `usr`, `api_key`, `org_member`
+Prefixes must be snake_case: lowercase letters and single underscores, cannot start/end with underscore, max 64 characters.
+
+Examples: `usr`, `api_key`, `org_member`, `sk_live`
 
 ## API Reference
 
 ### `UPLID[PREFIX]`
 
-Generic class for prefixed IDs.
-
 ```python
-# Generate new ID
-uid = UPLID.generate("usr")
+uid = UPLID.generate("usr")                              # Generate new
+uid = UPLID.from_string("usr_0M3xL9kQ7vR2nP5wY1jZ4c", "usr")  # Parse
 
-# Parse from string
-uid = UPLID.from_string("usr_0M3xL9kQ7vR2nP5wY1jZ4c", "usr")
-
-# Properties
-uid.prefix      # str: "usr"
-uid.uid         # UUID: underlying UUIDv7
-uid.base62_uid  # str: 22-char base62 encoding
-uid.datetime    # datetime: UTC timestamp from UUIDv7
-uid.timestamp   # float: Unix timestamp in seconds
+uid.prefix      # "usr"
+uid.uid         # UUID object
+uid.base62_uid  # "0M3xL9kQ7vR2nP5wY1jZ4c"
+uid.datetime    # When created (from UUIDv7)
+uid.timestamp   # Unix timestamp
 ```
 
-### `factory(UPLIDType)`
-
-Creates a factory function for Pydantic's `default_factory`.
+### `factory(UPLIDType)` / `parse(UPLIDType)`
 
 ```python
 UserId = UPLID[Literal["usr"]]
-UserIdFactory = factory(UserId)
-
-class User(BaseModel):
-    id: UserId = Field(default_factory=UserIdFactory)
-```
-
-### `parse(UPLIDType)`
-
-Creates a parser function that raises `UPLIDError` on invalid input.
-
-```python
-from uplid import UPLID, parse, UPLIDError
-
-UserId = UPLID[Literal["usr"]]
-parse_user_id = parse(UserId)
-
-try:
-    uid = parse_user_id("usr_0M3xL9kQ7vR2nP5wY1jZ4c")
-except UPLIDError as e:
-    print(e)
+UserIdFactory = factory(UserId)  # For Pydantic default_factory
+parse_user_id = parse(UserId)    # For manual parsing, raises UPLIDError
 ```
 
 ### `UPLIDType`
 
-Protocol for generic functions accepting any UPLID:
+Protocol for functions accepting any UPLID:
 
 ```python
-from uplid import UPLIDType
-
 def log_entity(id: UPLIDType) -> None:
     print(f"{id.prefix} created at {id.datetime}")
 ```
 
-### `UPLIDError`
-
-Exception raised for invalid IDs. Subclasses `ValueError`.
-
-### `uplid_column(UPLIDType, **kwargs)` (from `uplid.sqlalchemy`)
-
-Creates a SQLAlchemy `mapped_column` for a UPLID type with automatic serialization.
+### `uplid_column` / `uplid_field`
 
 ```python
-from uplid.sqlalchemy import uplid_column
+from uplid.sqlalchemy import uplid_column, uplid_field
 
-UserId = UPLID[Literal["usr"]]
+# SQLAlchemy
+id: Mapped[UserId] = uplid_column(UserId, primary_key=True)
 
-class User(Base):
-    id: Mapped[UserId] = uplid_column(UserId, primary_key=True)
-```
-
-### `uplid_field(UPLIDType, **kwargs)` (from `uplid.sqlalchemy`)
-
-Creates a SQLModel `Field` for a UPLID type with automatic serialization.
-
-```python
-from uplid.sqlalchemy import uplid_field
-
-UserId = UPLID[Literal["usr"]]
-
-class User(SQLModel, table=True):
-    id: UserId = uplid_field(UserId, default_factory=UserIdFactory, primary_key=True)
+# SQLModel
+id: UserId = uplid_field(UserId, default_factory=factory(UserId), primary_key=True)
 ```
 
 ## License
