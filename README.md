@@ -63,6 +63,8 @@ print(parsed.timestamp)  # 1738240496.789
 UPLIDs serialize to strings and deserialize with validation:
 
 ```python
+from typing import Literal
+
 from pydantic import BaseModel, Field
 from uplid import UPLID, factory
 

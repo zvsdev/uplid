@@ -234,24 +234,28 @@ class UPLID[PREFIX: LiteralString]:
     def __lt__(self, other: object) -> bool:
         """Compare for sorting (by prefix, then by uid)."""
         if isinstance(other, UPLID):
+            # type: ignore needed because UUID comparison is not recognized by type checkers
             return (self._prefix, self._uid) < (other._prefix, other._uid)  # type: ignore[operator]
         return NotImplemented
 
     def __le__(self, other: object) -> bool:
         """Compare for sorting (by prefix, then by uid)."""
         if isinstance(other, UPLID):
+            # type: ignore needed because UUID comparison is not recognized by type checkers
             return (self._prefix, self._uid) <= (other._prefix, other._uid)  # type: ignore[operator]
         return NotImplemented
 
     def __gt__(self, other: object) -> bool:
         """Compare for sorting (by prefix, then by uid)."""
         if isinstance(other, UPLID):
+            # type: ignore needed because UUID comparison is not recognized by type checkers
             return (self._prefix, self._uid) > (other._prefix, other._uid)  # type: ignore[operator]
         return NotImplemented
 
     def __ge__(self, other: object) -> bool:
         """Compare for sorting (by prefix, then by uid)."""
         if isinstance(other, UPLID):
+            # type: ignore needed because UUID comparison is not recognized by type checkers
             return (self._prefix, self._uid) >= (other._prefix, other._uid)  # type: ignore[operator]
         return NotImplemented
 

@@ -157,6 +157,7 @@ class UPLIDFieldKwargs(TypedDict, total=False):
     default: object
     default_factory: Callable[[], object]
     primary_key: bool
+    nullable: bool
     index: bool
     unique: bool
 
