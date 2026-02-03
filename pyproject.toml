@@ -1,6 +1,6 @@
 [project]
 name = "uplid"
-version = "1.0.2"
+version = "1.1.0"
 description = "Universal Prefixed Literal IDs - type-safe, human-readable identifiers"
 authors = [{ name = "ZVS", email = "zvs@daswolf.dev" }]
 readme = "README.md"
