@@ -22,7 +22,7 @@
 [![CI](https://github.com/zvsdev/uplid/actions/workflows/ci.yml/badge.svg)](https://github.com/zvsdev/uplid/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/uplid)](https://pypi.org/project/uplid/)
 [![Python](https://img.shields.io/pypi/pyversions/uplid)](https://pypi.org/project/uplid/)
-[![Coverage](https://img.shields.io/badge/coverage-99%25-brightgreen)](https://github.com/zvsdev/uplid)
+[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/zvsdev/uplid)
 
 ## Install
 
