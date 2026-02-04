@@ -7,7 +7,6 @@ from datetime import UTC
 from datetime import datetime as dt_datetime
 from typing import (
     TYPE_CHECKING,
-    Any,
     LiteralString,
     Protocol,
     Self,
@@ -263,7 +262,7 @@ class UPLID[PREFIX: LiteralString]:
         """Return self (UPLIDs are immutable)."""
         return self
 
-    def __deepcopy__(self, memo: dict[int, Any]) -> Self:
+    def __deepcopy__(self, memo: object) -> Self:
         """Return self (UPLIDs are immutable)."""
         return self
 
@@ -351,8 +350,8 @@ class UPLID[PREFIX: LiteralString]:
     @classmethod
     def __get_pydantic_core_schema__(
         cls,
-        source_type: Any,  # noqa: ANN401
-        handler: Any,  # noqa: ANN401
+        source_type: type[Self],
+        handler: object,
     ) -> CoreSchema:
         """Pydantic integration for validation and serialization.
 
@@ -383,7 +382,7 @@ class UPLID[PREFIX: LiteralString]:
 
         prefix_str: str = prefix_args[0]
 
-        def validate(v: UPLID[Any] | str) -> UPLID[Any]:
+        def validate(v: UPLIDType | str) -> UPLIDType:
             if isinstance(v, str):
                 return cls.from_string(v, prefix_str)
             if isinstance(v, UPLID):
