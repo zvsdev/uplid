@@ -24,6 +24,8 @@
 [![Python](https://img.shields.io/pypi/pyversions/uplid)](https://pypi.org/project/uplid/)
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/zvsdev/uplid)
 
+[About](https://zvs.fyi/articles/uplid.html)
+
 ## Install
 
 ```bash
@@ -196,6 +198,10 @@ id: Mapped[UserId] = uplid_column(UserId, primary_key=True)
 # SQLModel
 id: UserId = uplid_field(UserId, default_factory=factory(UserId), primary_key=True)
 ```
+
+## Credits
+
+Created by [ZVS](https://zvs.fyi)
 
 ## License
 
