@@ -1,12 +1,13 @@
 [project]
 name = "uplid"
-version = "1.1.2"
+version = "1.1.3"
 description = "Universal Prefixed Literal IDs - type-safe, human-readable identifiers"
 authors = [{ name = "ZVS", email = "zvs@daswolf.dev" }]
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.14"
-keywords = ["uuid", "id", "identifier", "pydantic", "type-safe", "uuid7"]
+keywords = ["pydantic", "fastapi", "sqlalchemy", "uuid", "identifiers", "stripe",
+  "prefixed-ids", "type-safe"]
 dependencies = ["pydantic>=2.10"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
