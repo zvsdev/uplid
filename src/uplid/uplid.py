@@ -37,12 +37,12 @@ _BASE62_UUID_LENGTH = 22
 _UUIDV7_TIMESTAMP_SHIFT = 80  # 128 - 48 = shift to extract timestamp
 _MS_PER_SECOND = 1000
 
-# Prefix validation: snake_case (lowercase letters and single underscores)
-# - Must start and end with a letter
+# Prefix validation: letters and single underscores
+# - Must start and end with a letter (a-z, A-Z)
 # - Cannot have consecutive underscores
 # - Single character prefixes are allowed
 # - Maximum 64 characters to prevent DoS via regex on huge inputs
-_PREFIX_PATTERN = re.compile(r"^[a-z]([a-z]*(_[a-z]+)*)?$")
+_PREFIX_PATTERN = re.compile(r"^[a-zA-Z]([a-zA-Z]*(_[a-zA-Z]+)*)?$")
 _PREFIX_MAX_LENGTH = 64
 
 
@@ -120,7 +120,7 @@ def _base62_to_int(s: str) -> int:
 
 
 def _validate_prefix(prefix: str) -> None:
-    """Validate that prefix follows snake_case rules.
+    """Validate that prefix follows naming rules.
 
     Raises:
         UPLIDError: If prefix is invalid.
@@ -131,8 +131,8 @@ def _validate_prefix(prefix: str) -> None:
         )
     if not _PREFIX_PATTERN.match(prefix):
         raise UPLIDError(
-            f"Prefix must be snake_case (lowercase letters, single underscores, "
-            f"cannot start/end with underscore or have consecutive underscores), "
+            f"Prefix must be letters and single underscores "
+            f"(cannot start/end with underscore or have consecutive underscores), "
             f"got {prefix!r}"
         )
 
@@ -162,11 +162,11 @@ class UPLID[PREFIX: LiteralString]:
         """Initialize a UPLID with a prefix and UUID.
 
         Args:
-            prefix: The string prefix (must be snake_case).
+            prefix: The string prefix (letters and single underscores).
             uid: The UUID (should be UUIDv7 for datetime/timestamp to be meaningful).
 
         Raises:
-            UPLIDError: If prefix is not valid snake_case.
+            UPLIDError: If prefix is invalid.
         """
         _validate_prefix(prefix)
         self._prefix = prefix
@@ -233,28 +233,24 @@ class UPLID[PREFIX: LiteralString]:
     def __lt__(self, other: object) -> bool:
         """Compare for sorting (by prefix, then by uid)."""
         if isinstance(other, UPLID):
-            # type: ignore needed because UUID comparison is not recognized by type checkers
             return (self._prefix, self._uid) < (other._prefix, other._uid)  # type: ignore[operator]
         return NotImplemented
 
     def __le__(self, other: object) -> bool:
         """Compare for sorting (by prefix, then by uid)."""
         if isinstance(other, UPLID):
-            # type: ignore needed because UUID comparison is not recognized by type checkers
             return (self._prefix, self._uid) <= (other._prefix, other._uid)  # type: ignore[operator]
         return NotImplemented
 
     def __gt__(self, other: object) -> bool:
         """Compare for sorting (by prefix, then by uid)."""
         if isinstance(other, UPLID):
-            # type: ignore needed because UUID comparison is not recognized by type checkers
             return (self._prefix, self._uid) > (other._prefix, other._uid)  # type: ignore[operator]
         return NotImplemented
 
     def __ge__(self, other: object) -> bool:
         """Compare for sorting (by prefix, then by uid)."""
         if isinstance(other, UPLID):
-            # type: ignore needed because UUID comparison is not recognized by type checkers
             return (self._prefix, self._uid) >= (other._prefix, other._uid)  # type: ignore[operator]
         return NotImplemented
 
@@ -275,14 +271,14 @@ class UPLID[PREFIX: LiteralString]:
         """Generate a new UPLID with the given prefix.
 
         Args:
-            prefix: The string prefix (must be snake_case: lowercase letters
-                and single underscores, cannot start/end with underscore).
+            prefix: The string prefix (letters and single underscores,
+                cannot start/end with underscore).
 
         Returns:
             A new UPLID instance.
 
         Raises:
-            UPLIDError: If the prefix is not valid snake_case.
+            UPLIDError: If the prefix is invalid.
         """
         _validate_prefix(prefix)
         return cls._generate_unchecked(prefix)
