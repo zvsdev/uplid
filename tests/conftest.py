@@ -32,8 +32,8 @@ ApiKeyIdFactory = factory(ApiKeyId)
 # Hypothesis Strategies
 # =============================================================================
 
-# Strategy for valid prefixes (snake_case, no consecutive underscores)
-prefix_strategy = st.from_regex(r"[a-z]([a-z_]*[a-z])?", fullmatch=True).filter(
+# Strategy for valid prefixes (letters and single underscores)
+prefix_strategy = st.from_regex(r"[a-zA-Z]([a-zA-Z_]*[a-zA-Z])?", fullmatch=True).filter(
     lambda s: "__" not in s and len(s) <= 20
 )
 

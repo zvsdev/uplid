@@ -194,8 +194,8 @@ def log_entity(id: UPLIDType) -> None:
 
 ## Prefix Rules
 
-- snake_case only: `usr`, `api_key`, `org_member`
-- Lowercase letters + single underscores
+- Letters and single underscores: `usr`, `api_key`, `org_member`, `USR`, `ApiKey`
+- Letters (a-z, A-Z) + single underscores
 - Cannot start/end with underscore
 - Max 64 characters
 

@@ -98,11 +98,11 @@ class TestEdgeCases:
             UPLID.from_string("", "usr")
 
     def test_only_underscore(self) -> None:
-        with pytest.raises(UPLIDError, match="snake_case"):
+        with pytest.raises(UPLIDError, match="letters and single underscores"):
             UPLID.from_string("_", "usr")
 
     def test_many_underscores(self) -> None:
-        with pytest.raises(UPLIDError, match="snake_case"):
+        with pytest.raises(UPLIDError, match="letters and single underscores"):
             UPLID.from_string("___", "usr")
 
     def test_unicode_in_uid(self) -> None:
@@ -118,9 +118,9 @@ class TestEdgeCases:
             UPLID.from_string("a" * 10000 + "_" + "0" * 22, "a" * 10000)
 
     def test_whitespace_in_prefix(self) -> None:
-        with pytest.raises(UPLIDError, match="snake_case"):
+        with pytest.raises(UPLIDError, match="letters and single underscores"):
             UPLID.generate("user id")
 
     def test_hyphen_in_prefix(self) -> None:
-        with pytest.raises(UPLIDError, match="snake_case"):
+        with pytest.raises(UPLIDError, match="letters and single underscores"):
             UPLID.generate("user-id")

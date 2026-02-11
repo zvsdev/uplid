@@ -20,16 +20,20 @@ class TestUPLIDGeneration:
         assert uid.prefix == "usr"
         assert isinstance(uid.uid, UUID)
 
-    def test_generate_rejects_uppercase_prefix(self) -> None:
-        with pytest.raises(UPLIDError, match="snake_case"):
-            UPLID.generate("USR")
+    def test_generate_accepts_uppercase_prefix(self) -> None:
+        uid = UPLID.generate("USR")
+        assert uid.prefix == "USR"
+
+    def test_generate_accepts_mixed_case_prefix(self) -> None:
+        uid = UPLID.generate("ApiKey")
+        assert uid.prefix == "ApiKey"
 
     def test_generate_rejects_prefix_starting_with_underscore(self) -> None:
-        with pytest.raises(UPLIDError, match="snake_case"):
+        with pytest.raises(UPLIDError, match="letters and single underscores"):
             UPLID.generate("_usr")
 
     def test_generate_rejects_prefix_ending_with_underscore(self) -> None:
-        with pytest.raises(UPLIDError, match="snake_case"):
+        with pytest.raises(UPLIDError, match="letters and single underscores"):
             UPLID.generate("usr_")
 
     def test_generate_accepts_snake_case_prefix(self) -> None:
@@ -173,20 +177,20 @@ class TestUPLIDPrefixLimits:
 
 class TestUPLIDPrefixValidation:
     def test_rejects_empty_prefix(self) -> None:
-        with pytest.raises(UPLIDError, match="snake_case"):
+        with pytest.raises(UPLIDError, match="letters and single underscores"):
             UPLID.generate("")
 
     def test_rejects_consecutive_underscores(self) -> None:
-        with pytest.raises(UPLIDError, match="snake_case"):
+        with pytest.raises(UPLIDError, match="letters and single underscores"):
             UPLID.generate("api__key")
 
     def test_rejects_numbers_in_prefix(self) -> None:
-        with pytest.raises(UPLIDError, match="snake_case"):
+        with pytest.raises(UPLIDError, match="letters and single underscores"):
             UPLID.generate("user123")
 
-    def test_rejects_mixed_case(self) -> None:
-        with pytest.raises(UPLIDError, match="snake_case"):
-            UPLID.generate("userId")
+    def test_accepts_mixed_case(self) -> None:
+        uid = UPLID.generate("userId")
+        assert uid.prefix == "userId"
 
 
 class TestUPLIDFromStringEdgeCases:
@@ -200,14 +204,14 @@ class TestUPLIDFromStringEdgeCases:
             UPLID.from_string(f"{long_prefix}_{'0' * 22}", long_prefix)
 
     def test_rejects_consecutive_underscores_in_string(self) -> None:
-        with pytest.raises(UPLIDError, match="snake_case"):
+        with pytest.raises(UPLIDError, match="letters and single underscores"):
             UPLID.from_string(f"api__key_{'0' * 22}", "api__key")
 
 
 class TestUPLIDDirectConstruction:
     def test_init_validates_prefix(self) -> None:
-        with pytest.raises(UPLIDError, match="snake_case"):
-            UPLID("INVALID", uuid7())
+        with pytest.raises(UPLIDError, match="letters and single underscores"):
+            UPLID("123invalid", uuid7())
 
     def test_init_accepts_valid_prefix(self) -> None:
         u = uuid7()
@@ -243,8 +247,8 @@ class TestParseHelper:
 
 class TestErrorMessageQuality:
     def test_prefix_error_shows_actual_value(self) -> None:
-        with pytest.raises(UPLIDError, match="got 'BAD_PREFIX'"):
-            UPLID.generate("BAD_PREFIX")
+        with pytest.raises(UPLIDError, match="got '123bad'"):
+            UPLID.generate("123bad")
 
     def test_wrong_prefix_error_shows_both_values(self) -> None:
         uid = UPLID.generate("usr")

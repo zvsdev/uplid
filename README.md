@@ -151,9 +151,9 @@ user.model_dump()  # {"id": "usr_...", "name": "Alice"} - Pydantic just works
 
 ## Prefix Rules
 
-Prefixes must be snake_case: lowercase letters and single underscores, cannot start/end with underscore, max 64 characters.
+Prefixes must be letters and single underscores, cannot start/end with underscore, max 64 characters.
 
-Examples: `usr`, `api_key`, `org_member`, `sk_live`
+Examples: `usr`, `api_key`, `org_member`, `sk_live`, `USR`, `ApiKey`
 
 ## API Reference
 
